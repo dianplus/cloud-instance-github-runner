@@ -1,0 +1,413 @@
+name: "Setup Aliyun ECS Spot Runner"
+description: "Create and setup a self-hosted runner on Aliyun ECS Spot instance"
+inputs:
+  # Aliyun authentication information
+  aliyun_access_key_id:
+    description: "Aliyun Access Key ID"
+    required: true
+  aliyun_access_key_secret:
+    description: "Aliyun Access Key Secret"
+    required: true
+  aliyun_region_id:
+    description: "Aliyun Region ID (e.g., cn-hangzhou)"
+    required: true
+
+  # Aliyun resource configuration
+  aliyun_vpc_id:
+    description: "VPC ID"
+    required: true
+  aliyun_security_group_id:
+    description: "Security Group ID"
+    required: true
+  aliyun_image_id:
+    description: "Image ID (optional if image_family is provided)"
+    required: false
+  aliyun_image_family:
+    description: "Image Family (takes precedence over image_id). Must match the architecture specified in 'arch' parameter (e.g., acs:ubuntu_24_04_x64 for amd64, acs:ubuntu_24_04_arm64 for arm64)"
+    required: false
+  aliyun_key_pair_name:
+    description: "SSH Key Pair Name"
+    required: false
+  aliyun_ecs_self_destruct_role_name:
+    description: "ECS Self-Destruct Role Name for instance auto-cleanup"
+    required: false
+
+  # GitHub configuration
+  github_token:
+    description: "GitHub Token for getting registration token"
+    required: true
+
+  # Runner configuration
+  runner_labels:
+    description: "Runner labels (comma-separated)"
+    required: false
+    default: "self-hosted,Linux,aliyun,spot-instance"
+  runner_version:
+    description: "GitHub Actions Runner version"
+    required: false
+    default: "2.330.0"
+
+  # Instance configuration
+  arch:
+    description: "Architecture (amd64 or arm64)"
+    required: false
+    default: "amd64"
+  min_cpu:
+    description: "Minimum CPU cores"
+    required: false
+    default: "8"
+  min_mem:
+    description: "Minimum memory in GB (auto-calculated if not provided)"
+    required: false
+  max_cpu:
+    description: "Maximum CPU cores"
+    required: false
+    default: "64"
+  max_mem:
+    description: "Maximum memory in GB (auto-calculated if not provided)"
+    required: false
+
+  # Proxy configuration
+  http_proxy:
+    description: "HTTP Proxy URL"
+    required: false
+  https_proxy:
+    description: "HTTPS Proxy URL"
+    required: false
+  no_proxy:
+    description: "NO_PROXY environment variable value"
+    required: false
+
+  # VSwitch IDs (A-Z)
+  vswitch_id_a:
+    description: "VSwitch ID for zone *-a"
+    required: false
+  vswitch_id_b:
+    description: "VSwitch ID for zone *-b"
+    required: false
+  vswitch_id_c:
+    description: "VSwitch ID for zone *-c"
+    required: false
+  vswitch_id_d:
+    description: "VSwitch ID for zone *-d"
+    required: false
+  vswitch_id_e:
+    description: "VSwitch ID for zone *-e"
+    required: false
+  vswitch_id_f:
+    description: "VSwitch ID for zone *-f"
+    required: false
+  vswitch_id_g:
+    description: "VSwitch ID for zone *-g"
+    required: false
+  vswitch_id_h:
+    description: "VSwitch ID for zone *-h"
+    required: false
+  vswitch_id_i:
+    description: "VSwitch ID for zone *-i"
+    required: false
+  vswitch_id_j:
+    description: "VSwitch ID for zone *-j"
+    required: false
+  vswitch_id_k:
+    description: "VSwitch ID for zone *-k"
+    required: false
+  vswitch_id_l:
+    description: "VSwitch ID for zone *-l"
+    required: false
+  vswitch_id_m:
+    description: "VSwitch ID for zone *-m"
+    required: false
+  vswitch_id_n:
+    description: "VSwitch ID for zone *-n"
+    required: false
+  vswitch_id_o:
+    description: "VSwitch ID for zone *-o"
+    required: false
+  vswitch_id_p:
+    description: "VSwitch ID for zone *-p"
+    required: false
+  vswitch_id_q:
+    description: "VSwitch ID for zone *-q"
+    required: false
+  vswitch_id_r:
+    description: "VSwitch ID for zone *-r"
+    required: false
+  vswitch_id_s:
+    description: "VSwitch ID for zone *-s"
+    required: false
+  vswitch_id_t:
+    description: "VSwitch ID for zone *-t"
+    required: false
+  vswitch_id_u:
+    description: "VSwitch ID for zone *-u"
+    required: false
+  vswitch_id_v:
+    description: "VSwitch ID for zone *-v"
+    required: false
+  vswitch_id_w:
+    description: "VSwitch ID for zone *-w"
+    required: false
+  vswitch_id_x:
+    description: "VSwitch ID for zone *-x"
+    required: false
+  vswitch_id_y:
+    description: "VSwitch ID for zone *-y"
+    required: false
+  vswitch_id_z:
+    description: "VSwitch ID for zone *-z"
+    required: false
+
+outputs:
+  instance_id:
+    description: "Created ECS instance ID"
+    value: ${{ steps.create-instance.outputs.instance_id }}
+  runner_name:
+    description: "Runner name"
+    value: ${{ steps.runner-name.outputs.name }}
+  runner_online:
+    description: "Whether runner is online (true/false)"
+    value: ${{ steps.wait-runner.outputs.runner_online }}
+  cpu_cores:
+    description: "Instance CPU cores"
+    value: ${{ steps.select-instance.outputs.CPU_CORES }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install and Configure Aliyun CLI
+      uses: Liar0320/aliyun-cli-action@v1.0.2
+      with:
+        version: "3.2.2"
+        access-key-id: ${{ inputs.aliyun_access_key_id }}
+        access-key-secret: ${{ inputs.aliyun_access_key_secret }}
+        region: ${{ inputs.aliyun_region_id }}
+
+    - name: Get Runner Registration Token
+      id: get-token
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          const response = await github.rest.actions.createRegistrationTokenForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+          });
+          return response.data.token;
+        result-encoding: string
+
+    - name: Generate Runner Name
+      id: runner-name
+      shell: bash
+      run: |
+        ARCH="${{ inputs.arch }}"
+        TIMESTAMP=$(date +%s)
+        RUNNER_NAME="ci-runner-${ARCH}-spot-${TIMESTAMP}"
+        echo "name=${RUNNER_NAME}" >> $GITHUB_OUTPUT
+
+    - name: Download spot-instance-advisor
+      id: download-advisor
+      shell: bash
+      run: |
+        echo "Fetching latest release version..." >&2
+        ADVISOR_VERSION=$(curl -s https://api.github.com/repos/maskshell/spot-instance-advisor/releases/latest | grep -o '"tag_name": "[^"]*' | cut -d'"' -f4 || echo "v1.0.1")
+        if [[ -z "${ADVISOR_VERSION}" || "${ADVISOR_VERSION}" == "null" ]]; then
+          echo "Warning: Failed to fetch latest version, using fallback: v1.0.1 (first version with --arch support)" >&2
+          ADVISOR_VERSION="v1.0.1"
+        fi
+        echo "Using spot-instance-advisor version: ${ADVISOR_VERSION}" >&2
+        echo "version=${ADVISOR_VERSION}" >> $GITHUB_OUTPUT
+
+        ADVISOR_URL="https://github.com/maskshell/spot-instance-advisor/releases/download/${ADVISOR_VERSION}/spot-instance-advisor-linux-amd64"
+        echo "Downloading from: ${ADVISOR_URL}" >&2
+        curl -L -f -o spot-instance-advisor "${ADVISOR_URL}" || {
+          echo "Error: Failed to download spot-instance-advisor from releases" >&2
+          exit 1
+        }
+        chmod +x spot-instance-advisor
+        echo "advisor_path=$(pwd)/spot-instance-advisor" >> $GITHUB_OUTPUT
+        ./spot-instance-advisor --version || echo "Warning: Version check failed" >&2
+
+    - name: Select Optimal Instance
+      id: select-instance
+      shell: bash
+      env:
+        ALIYUN_ACCESS_KEY_ID: ${{ inputs.aliyun_access_key_id }}
+        ALIYUN_ACCESS_KEY_SECRET: ${{ inputs.aliyun_access_key_secret }}
+        ALIYUN_REGION_ID: ${{ inputs.aliyun_region_id }}
+        ARCH: ${{ inputs.arch }}
+        SPOT_ADVISOR_BINARY: ${{ steps.download-advisor.outputs.advisor_path }}
+        MIN_CPU: ${{ inputs.min_cpu }}
+        MAX_CPU: ${{ inputs.max_cpu }}
+        MIN_MEM: ${{ inputs.min_mem }}
+        MAX_MEM: ${{ inputs.max_mem }}
+        ALIYUN_VSWITCH_ID_A: ${{ inputs.vswitch_id_a }}
+        ALIYUN_VSWITCH_ID_B: ${{ inputs.vswitch_id_b }}
+        ALIYUN_VSWITCH_ID_C: ${{ inputs.vswitch_id_c }}
+        ALIYUN_VSWITCH_ID_D: ${{ inputs.vswitch_id_d }}
+        ALIYUN_VSWITCH_ID_E: ${{ inputs.vswitch_id_e }}
+        ALIYUN_VSWITCH_ID_F: ${{ inputs.vswitch_id_f }}
+        ALIYUN_VSWITCH_ID_G: ${{ inputs.vswitch_id_g }}
+        ALIYUN_VSWITCH_ID_H: ${{ inputs.vswitch_id_h }}
+        ALIYUN_VSWITCH_ID_I: ${{ inputs.vswitch_id_i }}
+        ALIYUN_VSWITCH_ID_J: ${{ inputs.vswitch_id_j }}
+        ALIYUN_VSWITCH_ID_K: ${{ inputs.vswitch_id_k }}
+        ALIYUN_VSWITCH_ID_L: ${{ inputs.vswitch_id_l }}
+        ALIYUN_VSWITCH_ID_M: ${{ inputs.vswitch_id_m }}
+        ALIYUN_VSWITCH_ID_N: ${{ inputs.vswitch_id_n }}
+        ALIYUN_VSWITCH_ID_O: ${{ inputs.vswitch_id_o }}
+        ALIYUN_VSWITCH_ID_P: ${{ inputs.vswitch_id_p }}
+        ALIYUN_VSWITCH_ID_Q: ${{ inputs.vswitch_id_q }}
+        ALIYUN_VSWITCH_ID_R: ${{ inputs.vswitch_id_r }}
+        ALIYUN_VSWITCH_ID_S: ${{ inputs.vswitch_id_s }}
+        ALIYUN_VSWITCH_ID_T: ${{ inputs.vswitch_id_t }}
+        ALIYUN_VSWITCH_ID_U: ${{ inputs.vswitch_id_u }}
+        ALIYUN_VSWITCH_ID_V: ${{ inputs.vswitch_id_v }}
+        ALIYUN_VSWITCH_ID_W: ${{ inputs.vswitch_id_w }}
+        ALIYUN_VSWITCH_ID_X: ${{ inputs.vswitch_id_x }}
+        ALIYUN_VSWITCH_ID_Y: ${{ inputs.vswitch_id_y }}
+        ALIYUN_VSWITCH_ID_Z: ${{ inputs.vswitch_id_z }}
+      run: |
+        OUTPUT=$(python3 ${{ github.action_path }}/scripts/select_instance.py)
+
+        CPU_CORES_DEFAULT=8
+        while IFS='=' read -r key value; do
+          if [[ -n "${key}" && -n "${value}" ]]; then
+            echo "${key}=${value}" >> $GITHUB_OUTPUT
+            if [[ "${key}" == "CANDIDATES_FILE" ]]; then
+              echo "${key}=${value}" >> $GITHUB_ENV
+            fi
+            if [[ "${key}" == "CPU_CORES" ]]; then
+              CPU_CORES_DEFAULT="${value}"
+            fi
+          fi
+        done <<< "${OUTPUT}"
+
+        if ! grep -q "^CPU_CORES=" $GITHUB_OUTPUT 2>/dev/null; then
+          echo "CPU_CORES=${CPU_CORES_DEFAULT}" >> $GITHUB_OUTPUT
+          echo "Warning: CPU_CORES not found in output, using default: ${CPU_CORES_DEFAULT}" >&2
+        fi
+
+    - name: Generate User Data
+      id: user-data
+      shell: bash
+      env:
+        TEMPLATE_FILE: ${{ github.action_path }}/templates/user-data.sh
+        RUNNER_REGISTRATION_TOKEN: ${{ steps.get-token.outputs.result }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        RUNNER_NAME: ${{ steps.runner-name.outputs.name }}
+        RUNNER_LABELS: ${{ inputs.runner_labels }}
+        RUNNER_VERSION: ${{ inputs.runner_version }}
+        HTTP_PROXY: ${{ inputs.http_proxy }}
+        HTTPS_PROXY: ${{ inputs.https_proxy }}
+        NO_PROXY: ${{ inputs.no_proxy }}
+        ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME: ${{ inputs.aliyun_ecs_self_destruct_role_name }}
+      run: |
+        USER_DATA=$(bash ${{ github.action_path }}/scripts/generate-user-data.sh)
+        USER_DATA_B64=$(echo -n "${USER_DATA}" | base64 -w 0 2>/dev/null || echo -n "${USER_DATA}" | base64 | tr -d '\n')
+        echo "user_data_b64=${USER_DATA_B64}" >> $GITHUB_OUTPUT
+
+    - name: Create Spot Instance
+      id: create-instance
+      shell: bash
+      env:
+        ALIYUN_ACCESS_KEY_ID: ${{ inputs.aliyun_access_key_id }}
+        ALIYUN_ACCESS_KEY_SECRET: ${{ inputs.aliyun_access_key_secret }}
+        ALIYUN_REGION_ID: ${{ inputs.aliyun_region_id }}
+        ALIYUN_VPC_ID: ${{ inputs.aliyun_vpc_id }}
+        ALIYUN_SECURITY_GROUP_ID: ${{ inputs.aliyun_security_group_id }}
+        ALIYUN_IMAGE_ID: ${{ inputs.aliyun_image_id }}
+        ALIYUN_IMAGE_FAMILY: ${{ inputs.aliyun_image_family }}
+        ALIYUN_VSWITCH_ID: ${{ steps.select-instance.outputs.VSWITCH_ID }}
+        ALIYUN_KEY_PAIR_NAME: ${{ inputs.aliyun_key_pair_name }}
+        ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME: ${{ inputs.aliyun_ecs_self_destruct_role_name }}
+        INSTANCE_TYPE: ${{ steps.select-instance.outputs.INSTANCE_TYPE }}
+        INSTANCE_NAME: ${{ steps.runner-name.outputs.name }}
+        ARCH: ${{ inputs.arch }}
+        SPOT_PRICE_LIMIT: ${{ steps.select-instance.outputs.SPOT_PRICE_LIMIT }}
+        CANDIDATES_FILE: ${{ steps.select-instance.outputs.CANDIDATES_FILE }}
+        ALIYUN_VSWITCH_ID_A: ${{ inputs.vswitch_id_a }}
+        ALIYUN_VSWITCH_ID_B: ${{ inputs.vswitch_id_b }}
+        ALIYUN_VSWITCH_ID_C: ${{ inputs.vswitch_id_c }}
+        ALIYUN_VSWITCH_ID_D: ${{ inputs.vswitch_id_d }}
+        ALIYUN_VSWITCH_ID_E: ${{ inputs.vswitch_id_e }}
+        ALIYUN_VSWITCH_ID_F: ${{ inputs.vswitch_id_f }}
+        ALIYUN_VSWITCH_ID_G: ${{ inputs.vswitch_id_g }}
+        ALIYUN_VSWITCH_ID_H: ${{ inputs.vswitch_id_h }}
+        ALIYUN_VSWITCH_ID_I: ${{ inputs.vswitch_id_i }}
+        ALIYUN_VSWITCH_ID_J: ${{ inputs.vswitch_id_j }}
+        ALIYUN_VSWITCH_ID_K: ${{ inputs.vswitch_id_k }}
+        ALIYUN_VSWITCH_ID_L: ${{ inputs.vswitch_id_l }}
+        ALIYUN_VSWITCH_ID_M: ${{ inputs.vswitch_id_m }}
+        ALIYUN_VSWITCH_ID_N: ${{ inputs.vswitch_id_n }}
+        ALIYUN_VSWITCH_ID_O: ${{ inputs.vswitch_id_o }}
+        ALIYUN_VSWITCH_ID_P: ${{ inputs.vswitch_id_p }}
+        ALIYUN_VSWITCH_ID_Q: ${{ inputs.vswitch_id_q }}
+        ALIYUN_VSWITCH_ID_R: ${{ inputs.vswitch_id_r }}
+        ALIYUN_VSWITCH_ID_S: ${{ inputs.vswitch_id_s }}
+        ALIYUN_VSWITCH_ID_T: ${{ inputs.vswitch_id_t }}
+        ALIYUN_VSWITCH_ID_U: ${{ inputs.vswitch_id_u }}
+        ALIYUN_VSWITCH_ID_V: ${{ inputs.vswitch_id_v }}
+        ALIYUN_VSWITCH_ID_W: ${{ inputs.vswitch_id_w }}
+        ALIYUN_VSWITCH_ID_X: ${{ inputs.vswitch_id_x }}
+        ALIYUN_VSWITCH_ID_Y: ${{ inputs.vswitch_id_y }}
+        ALIYUN_VSWITCH_ID_Z: ${{ inputs.vswitch_id_z }}
+        USER_DATA_B64: ${{ steps.user-data.outputs.user_data_b64 }}
+      run: |
+        python3 ${{ github.action_path }}/scripts/write_user_data.py /tmp/user-data.sh
+        export USER_DATA_FILE=/tmp/user-data.sh
+        export DEBUG=true
+        python3 ${{ github.action_path }}/scripts/create_spot_instance.py > /tmp/instance-id.txt 2> /tmp/aliyun-error.log || {
+          EXIT_CODE=$?
+          echo "Error: Failed to create instance (exit code: ${EXIT_CODE})"
+          echo "=== Error Output ==="
+          cat /tmp/aliyun-error.log
+          echo "=== Standard Output ==="
+          cat /tmp/instance-id.txt
+          exit ${EXIT_CODE}
+        }
+        EXIT_CODE=$?
+        if [[ ${EXIT_CODE} -ne 0 ]]; then
+          echo "Error: Failed to create instance (exit code: ${EXIT_CODE})"
+          echo "=== Error Output ==="
+          cat /tmp/aliyun-error.log
+          echo "=== Standard Output ==="
+          cat /tmp/instance-id.txt
+          exit ${EXIT_CODE}
+        fi
+        INSTANCE_ID=$(cat /tmp/instance-id.txt | tail -1)
+        if [[ -z "${INSTANCE_ID}" ]]; then
+          echo "Error: Failed to extract instance ID"
+          echo "=== Standard Output ==="
+          cat /tmp/instance-id.txt
+          echo "=== Error Output ==="
+          cat /tmp/aliyun-error.log
+          exit 1
+        fi
+        echo "instance_id=${INSTANCE_ID}" >> $GITHUB_OUTPUT
+        echo "runner_name=${{ steps.runner-name.outputs.name }}" >> $GITHUB_OUTPUT
+
+    - name: Wait for Runner Online
+      id: wait-runner
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        RUNNER_NAME: ${{ steps.runner-name.outputs.name }}
+        TIMEOUT: 300
+        INTERVAL: 10
+      run: |
+        bash ${{ github.action_path }}/scripts/wait-for-runner.sh
+
+    - name: Cleanup on Failure
+      if: failure()
+      shell: bash
+      env:
+        ALIYUN_ACCESS_KEY_ID: ${{ inputs.aliyun_access_key_id }}
+        ALIYUN_ACCESS_KEY_SECRET: ${{ inputs.aliyun_access_key_secret }}
+        ALIYUN_REGION_ID: ${{ inputs.aliyun_region_id }}
+        INSTANCE_ID: ${{ steps.create-instance.outputs.instance_id }}
+      run: |
+        if [[ -n "${INSTANCE_ID}" ]]; then
+          bash ${{ github.action_path }}/scripts/cleanup-instance.sh
+        fi

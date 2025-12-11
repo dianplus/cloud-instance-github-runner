@@ -1,0 +1,257 @@
+# Project specific
+/.project
+!/.idea/
+ITERATION_PLAN.md
+spot-instance-advisor
+
+# Environment variables
+.env
+.env-local
+.env.*.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Python testing and type checking
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.cover
+.tox/
+.nox/
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+cython_debug/
+
+# Python virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# Python package managers
+.python-version
+Pipfile.lock
+poetry.lock
+
+# Ruff
+.ruff_cache/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+.npm
+.eslintcache
+.node_repl_history
+*.tgz
+.yarn-integrity
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# IDE - VS Code
+.vscode/
+*.code-workspace
+
+# IDE - PyCharm/IntelliJ IDEA
+# Note: !/.idea/ is explicitly allowed in project-specific section
+# .idea/ is allowed via exception rule, but ignore specific files
+*.iml
+*.iws
+*.ipr
+
+# IDE - Cursor
+.cursor/
+
+# IDE - Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# IDE - Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+Session.vim
+Sessionx.vim
+.netrwhist
+tags
+[._]*.un~
+
+# IDE - Emacs
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# IDE - Other
+*.swp
+*.swo
+*~
+
+# OS - macOS
+.DS_Store
+.DS_Store?
+._*
+.AppleDouble
+.LSOverride
+Icon
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# OS - Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# OS - Linux
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+*.dockerignore
+
+# Build artifacts and archives
+*.tar
+*.tar.gz
+*.zip
+*.rar
+*.7z
+*.dmg
+*.iso
+*.jar
+*.zipx
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# CI/CD
+.github/workflows/*.local.yml
+.circleci/local.yml
+
+# Pre-commit
+.pre-commit-config.local.yaml
+
+# Aliyun/AWS credentials and secrets
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+credentials
+config
+credentials.json
+service-account.json
+secrets/
+*.secret
+
+# Local configuration files
+*.local
+*.local.*
+local_settings.py
+local_config.py
+
+# Generated files
+*.generated.*
+generated/
+auto-generated/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath
+*.sage.py
+
+# Spyder
+.spyderproject
+.spyproject
+
+# Rope
+.ropeproject
+
+# mkdocs
+/site
+
+# AI Agent
+AGENTS.md
