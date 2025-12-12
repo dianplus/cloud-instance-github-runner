@@ -101,6 +101,47 @@ else
   exit 1
 fi
 
+# Install Aliyun CLI (required for self-destruct mechanism)
+echo "=== Installing Aliyun CLI ==="
+if ! command -v aliyun &> /dev/null; then
+  # Detect architecture
+  ARCH=$(uname -m)
+  if [[ "${ARCH}" == "x86_64" ]]; then
+    CLI_ARCH="amd64"
+  elif [[ "${ARCH}" == "aarch64" ]]; then
+    CLI_ARCH="arm64"
+  else
+    echo "Error: Unsupported architecture for Aliyun CLI: ${ARCH}" >&2
+    exit 1
+  fi
+  
+  # Download and install Aliyun CLI
+  CLI_URL="https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-${CLI_ARCH}.tgz"
+  echo "Downloading Aliyun CLI from: ${CLI_URL}"
+  curl -o /tmp/aliyun-cli.tgz -L \
+    --retry 5 --retry-all-errors \
+    --connect-timeout 10 --max-time 300 \
+    "${CLI_URL}"
+  
+  # Extract and install
+  tar xzf /tmp/aliyun-cli.tgz -C /tmp
+  mv /tmp/aliyun /usr/local/bin/aliyun
+  chmod +x /usr/local/bin/aliyun
+  rm -f /tmp/aliyun-cli.tgz
+  
+  # Verify installation
+  if command -v aliyun &> /dev/null; then
+    ALIYUN_VERSION=$(aliyun version 2>/dev/null || echo "unknown")
+    echo "Aliyun CLI installed successfully (version: ${ALIYUN_VERSION})"
+  else
+    echo "Error: Failed to install Aliyun CLI" >&2
+    exit 1
+  fi
+else
+  ALIYUN_VERSION=$(aliyun version 2>/dev/null || echo "unknown")
+  echo "Aliyun CLI already installed (version: ${ALIYUN_VERSION})"
+fi
+
 # Install GitHub Actions Runner
 echo "=== Installing GitHub Actions Runner ==="
 RUNNER_DIR="/opt/actions-runner"
