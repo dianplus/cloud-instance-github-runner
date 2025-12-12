@@ -396,7 +396,7 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         RUNNER_NAME: ${{ steps.runner-name.outputs.name }}
-        TIMEOUT: 300
+        TIMEOUT: 120
         INTERVAL: 10
       run: |
         bash ${{ github.action_path }}/scripts/wait-for-runner.sh
