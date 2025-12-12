@@ -55,29 +55,32 @@ echo "=== Configuring proxy ==="
 if [[ -n "${HTTP_PROXY}" ]]; then
   echo "Setting HTTP_PROXY: ${HTTP_PROXY}"
   export HTTP_PROXY="${HTTP_PROXY}"
-  echo "export HTTP_PROXY=\"${HTTP_PROXY}\"" >> /etc/environment
+  # /etc/environment format: KEY=VALUE (no export keyword, systemd compatible)
+  echo "HTTP_PROXY=\"${HTTP_PROXY}\"" >> /etc/environment
   # Also set lowercase variable to ensure curl and other tools work
   export http_proxy="${HTTP_PROXY}"
-  echo "export http_proxy=\"${HTTP_PROXY}\"" >> /etc/environment
+  echo "http_proxy=\"${HTTP_PROXY}\"" >> /etc/environment
 fi
 
 if [[ -n "${HTTPS_PROXY}" ]]; then
   echo "Setting HTTPS_PROXY: ${HTTPS_PROXY}"
   export HTTPS_PROXY="${HTTPS_PROXY}"
-  echo "export HTTPS_PROXY=\"${HTTPS_PROXY}\"" >> /etc/environment
+  # /etc/environment format: KEY=VALUE (no export keyword, systemd compatible)
+  echo "HTTPS_PROXY=\"${HTTPS_PROXY}\"" >> /etc/environment
   # Also set lowercase variable to ensure curl and other tools work
   export https_proxy="${HTTPS_PROXY}"
-  echo "export https_proxy=\"${HTTPS_PROXY}\"" >> /etc/environment
+  echo "https_proxy=\"${HTTPS_PROXY}\"" >> /etc/environment
 fi
 
 if [[ -n "${NO_PROXY}" ]]; then
   echo "Setting NO_PROXY: ${NO_PROXY}"
   export NO_PROXY="${NO_PROXY}"
-  echo "export NO_PROXY=\"${NO_PROXY}\"" >> /etc/environment
+  # /etc/environment format: KEY=VALUE (no export keyword, systemd compatible)
+  echo "NO_PROXY=\"${NO_PROXY}\"" >> /etc/environment
 
   # Also set lowercase version (some tools use lowercase)
   export no_proxy="${NO_PROXY}"
-  echo "export no_proxy=\"${NO_PROXY}\"" >> /etc/environment
+  echo "no_proxy=\"${NO_PROXY}\"" >> /etc/environment
 fi
 
 if [[ -n "${HTTP_PROXY}" || -n "${HTTPS_PROXY}" ]]; then
