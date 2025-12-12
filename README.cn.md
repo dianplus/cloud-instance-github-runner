@@ -294,7 +294,51 @@ RAM 用户需要以下权限：
     },
     {
       "Effect": "Allow",
-      "Action": ["vpc:DescribeVSwitches", "vpc:DescribeVpcs"],
+      "Action": [
+        "vpc:DescribeVSwitches",
+        "vpc:DescribeVpcs"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "ram:PassRole",
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecs:DeleteInstance",
+        "ecs:DeleteInstances"
+      ],
+      "Resource": "acs:ecs:*:*:instance/*",
+      "Condition": {
+        "StringEquals": {
+          "acs:ResourceTag/GITHUB_RUNNER_TYPE": [
+            "aliyun-ecs-spot"
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+如果还希望创建自定义镜像以缩短 CI 时间，那么还需要以下权限：
+
+```json
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecs:CreateImage",
+        "ecs:DescribeImages",
+        "ecs:ModifyImageAttribute",
+        "ecs:DeleteImage",
+        "ecs:DescribeImageFromFamily"
+      ],
       "Resource": "*"
     }
   ]
@@ -309,7 +353,7 @@ RAM 用户需要以下权限：
 
 ```bash
 aliyun ram CreateRole \
-  --RoleName EcsSelfDestructRole \
+  --RoleName GitHubRunnerSelfDestructRole \
   --AssumeRolePolicyDocument '{
     "Statement": [{
       "Action": "sts:AssumeRole",
@@ -330,19 +374,20 @@ aliyun ram CreatePolicy \
     "Statement": [{
       "Effect": "Allow",
       "Action": ["ecs:DeleteInstance", "ecs:DescribeInstances"],
-      "Resource": "*"
+      "Resource": "*",
+      "Condition": {"StringEquals": {"acs:ResourceTag/GITHUB_RUNNER_TYPE": ["aliyun-ecs-spot"]}}
     }]
   }'
 
 aliyun ram AttachPolicyToRole \
   --PolicyType Custom \
   --PolicyName EcsSelfDestructPolicy \
-  --RoleName EcsSelfDestructRole
+  --RoleName GitHubRunnerSelfDestructRole
 ```
 
 **配置 GitHub Variable：**
 
-- `ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME`: 角色名称（如 `EcsSelfDestructRole`）
+- `ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME`: 角色名称（如 `GitHubRunnerSelfDestructRole`）
 
 ## 架构说明
 

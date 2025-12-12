@@ -294,8 +294,31 @@ RAM user needs the following permissions:
     },
     {
       "Effect": "Allow",
-      "Action": ["vpc:DescribeVSwitches", "vpc:DescribeVpcs"],
+      "Action": [
+        "vpc:DescribeVSwitches",
+        "vpc:DescribeVpcs"
+      ],
       "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "ram:PassRole",
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecs:DeleteInstance",
+        "ecs:DeleteInstances"
+      ],
+      "Resource": "acs:ecs:*:*:instance/*",
+      "Condition": {
+        "StringEquals": {
+          "acs:ResourceTag/GITHUB_RUNNER_TYPE": [
+            "aliyun-ecs-spot"
+          ]
+        }
+      }
     }
   ]
 }
@@ -309,7 +332,7 @@ Create an ECS instance role with instance deletion permissions to enable self-de
 
 ```bash
 aliyun ram CreateRole \
-  --RoleName EcsSelfDestructRole \
+  --RoleName GitHubRunnerSelfDestructRole \
   --AssumeRolePolicyDocument '{
     "Statement": [{
       "Action": "sts:AssumeRole",
@@ -330,19 +353,41 @@ aliyun ram CreatePolicy \
     "Statement": [{
       "Effect": "Allow",
       "Action": ["ecs:DeleteInstance", "ecs:DescribeInstances"],
-      "Resource": "*"
+      "Resource": "*",
+      "Condition": {"StringEquals": {"acs:ResourceTag/GITHUB_RUNNER_TYPE": ["aliyun-ecs-spot"]}}
     }]
   }'
 
 aliyun ram AttachPolicyToRole \
   --PolicyType Custom \
   --PolicyName EcsSelfDestructPolicy \
-  --RoleName EcsSelfDestructRole
+  --RoleName GitHubRunnerSelfDestructRole
 ```
 
 **Configure GitHub Variable:**
 
-- `ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME`: Role name (e.g., `EcsSelfDestructRole`)
+- `ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME`: Role name (e.g., `GitHubRunnerSelfDestructRole`)
+
+If you also want to create custom images to shorten CI time, you need the following additional permissions:
+
+```json
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecs:CreateImage",
+        "ecs:DescribeImages",
+        "ecs:ModifyImageAttribute",
+        "ecs:DeleteImage",
+        "ecs:DescribeImageFromFamily"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
 
 ## Architecture Notes
 
