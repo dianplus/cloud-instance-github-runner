@@ -46,7 +46,7 @@ jobs:
           aliyun_vpc_id: ${{ vars.ALIYUN_VPC_ID }}
           aliyun_security_group_id: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
           aliyun_image_id: ${{ vars.ALIYUN_AMD64_IMAGE_ID }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.RUNNER_REGISTRATION_PAT }}
           arch: amd64
           min_cpu: 8
           vswitch_id_b: ${{ vars.ALIYUN_VSWITCH_ID_B }}
@@ -94,7 +94,7 @@ jobs:
           aliyun_vpc_id: ${{ vars.ALIYUN_VPC_ID }}
           aliyun_security_group_id: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
           aliyun_image_family: acs:ubuntu_24_04_x64
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.RUNNER_REGISTRATION_PAT }}
           arch: amd64
           vswitch_id_b: ${{ vars.ALIYUN_VSWITCH_ID_B }}
 
@@ -114,7 +114,7 @@ jobs:
           aliyun_vpc_id: ${{ vars.ALIYUN_VPC_ID }}
           aliyun_security_group_id: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
           aliyun_image_family: acs:ubuntu_24_04_arm64
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.RUNNER_REGISTRATION_PAT }}
           arch: arm64
           vswitch_id_b: ${{ vars.ALIYUN_VSWITCH_ID_B }}
 ```
@@ -133,7 +133,7 @@ jobs:
 | `aliyun_vpc_id`            | VPC ID                                             | `vpc-xxx`                     |
 | `aliyun_security_group_id` | 安全组 ID                                          | `sg-xxx`                      |
 | `aliyun_image_id`          | 镜像 ID（如果提供了 `aliyun_image_family` 则可选） | `m-xxx`                       |
-| `github_token`             | GitHub Token（用于获取 registration token）        | `${{ secrets.GITHUB_TOKEN }}` |
+| `github_token`             | GitHub Token（用于获取 registration token）        | `${{ secrets.RUNNER_REGISTRATION_PAT }}` |
 
 **重要提示**：`github_token` 用于调用 GitHub API 获取 runner registration token。**注意**：仅配置 workflow 的 `permissions` 是不够的，必须使用预先配置了权限的 PAT (Personal Access Token)。PAT 的权限要求：经典 PAT 需要 `repo` scope，细粒度 PAT 或 GitHub Apps 需要 `actions:write` 权限。详见下方"权限配置"章节。
 
@@ -155,6 +155,8 @@ jobs:
 | `https_proxy`                        | HTTPS 代理 URL                       | -                   |
 | `no_proxy`                           | NO_PROXY 环境变量值                  | -                   |
 | `vswitch_id_a` 到 `vswitch_id_z`     | 各可用区的 VSwitch ID                | -                   |
+
+**重要提示 - 代理配置（中国大陆区域）**：虽然代理参数在技术上是可选的，但如果您使用的是中国大陆区域的阿里云 ECS 实例（如 `cn-hangzhou`、`cn-beijing` 等），由于网络环境限制（GWF），**强烈建议配置代理**。如果不设置代理，实例可能无法访问 GitHub 来下载 GitHub Actions Runner 二进制文件和其他必要资源，导致 runner 初始化失败。请确保代理服务器可以正常访问 `github.com` 和 `githubusercontent.com`。
 
 ## 输出参数
 

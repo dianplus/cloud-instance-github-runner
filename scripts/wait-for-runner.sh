@@ -9,7 +9,7 @@ set -euo pipefail
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}"
 RUNNER_NAME="${RUNNER_NAME:-}"
-TIMEOUT="${TIMEOUT:-300}"  # Default timeout 5 minutes
+TIMEOUT="${TIMEOUT:-120}"  # Default timeout 5 minutes
 INTERVAL="${INTERVAL:-10}"  # Default polling interval 10 seconds
 
 # Validate required parameters

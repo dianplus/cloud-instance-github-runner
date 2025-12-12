@@ -202,7 +202,9 @@ runs:
       run: |
         ARCH="${{ inputs.arch }}"
         TIMESTAMP=$(date +%s)
-        RUNNER_NAME="ci-runner-${ARCH}-spot-${TIMESTAMP}"
+        # Add random number (0-32767) to ensure uniqueness even if multiple runners are created in the same second
+        RANDOM_SUFFIX=${RANDOM:-$(shuf -i 0-32767 -n 1)}
+        RUNNER_NAME="ci-runner-${ARCH}-spot-${TIMESTAMP}-${RANDOM_SUFFIX}"
         echo "name=${RUNNER_NAME}" >> $GITHUB_OUTPUT
 
     - name: Download spot-instance-advisor

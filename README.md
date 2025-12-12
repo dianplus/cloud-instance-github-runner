@@ -46,7 +46,7 @@ jobs:
           aliyun_vpc_id: ${{ vars.ALIYUN_VPC_ID }}
           aliyun_security_group_id: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
           aliyun_image_id: ${{ vars.ALIYUN_AMD64_IMAGE_ID }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.RUNNER_REGISTRATION_PAT }}
           arch: amd64
           min_cpu: 8
           vswitch_id_b: ${{ vars.ALIYUN_VSWITCH_ID_B }}
@@ -94,7 +94,7 @@ jobs:
           aliyun_vpc_id: ${{ vars.ALIYUN_VPC_ID }}
           aliyun_security_group_id: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
           aliyun_image_family: acs:ubuntu_24_04_x64
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.RUNNER_REGISTRATION_PAT }}
           arch: amd64
           vswitch_id_b: ${{ vars.ALIYUN_VSWITCH_ID_B }}
 
@@ -114,7 +114,7 @@ jobs:
           aliyun_vpc_id: ${{ vars.ALIYUN_VPC_ID }}
           aliyun_security_group_id: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
           aliyun_image_family: acs:ubuntu_24_04_arm64
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.RUNNER_REGISTRATION_PAT }}
           arch: arm64
           vswitch_id_b: ${{ vars.ALIYUN_VSWITCH_ID_B }}
 ```
@@ -133,7 +133,7 @@ jobs:
 | `aliyun_vpc_id`            | VPC ID                                                   | `vpc-xxx`                     |
 | `aliyun_security_group_id` | Security Group ID                                        | `sg-xxx`                      |
 | `aliyun_image_id`          | Image ID (optional if `aliyun_image_family` is provided) | `m-xxx`                       |
-| `github_token`             | GitHub Token (for getting registration token)            | `${{ secrets.GITHUB_TOKEN }}` |
+| `github_token`             | GitHub Token (for getting registration token)            | `${{ secrets.RUNNER_REGISTRATION_PAT }}` |
 
 **Important**: The `github_token` is used to call GitHub API to get runner registration token. **Note**: Simply configuring workflow's `permissions` is not sufficient. You must use a pre-configured PAT (Personal Access Token) with appropriate permissions. PAT permission requirements: Classic PATs require `repo` scope, while fine-grained PATs or GitHub Apps require `actions:write` permission. See the "Permission Configuration" section below for details.
 
@@ -155,6 +155,8 @@ jobs:
 | `https_proxy`                        | HTTPS Proxy URL                                        | -                   |
 | `no_proxy`                           | NO_PROXY environment variable value                    | -                   |
 | `vswitch_id_a` to `vswitch_id_z`     | VSwitch IDs for each availability zone                 | -                   |
+
+**Important Note - Proxy Configuration (Mainland China Regions)**: While proxy parameters are technically optional, if you are using Aliyun ECS instances in Mainland China regions (e.g., `cn-hangzhou`, `cn-beijing`), **it is strongly recommended to configure a proxy** due to network restrictions. Without a proxy, instances may be unable to access GitHub to download GitHub Actions Runner binaries and other required resources, which will cause runner initialization to fail. Ensure your proxy server can access `github.com` and `githubusercontent.com`.
 
 ## Output Parameters
 
