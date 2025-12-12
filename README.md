@@ -27,9 +27,6 @@ jobs:
   setup:
     name: Setup Spot Instance
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: write
     outputs:
       instance_id: ${{ steps.setup-runner.outputs.instance_id }}
       runner_name: ${{ steps.setup-runner.outputs.runner_name }}
@@ -90,9 +87,7 @@ jobs:
   setup-amd64:
     name: Setup AMD64 Spot Instance
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: write
+    # permissions configuration is optional since this Action uses PAT instead of GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
         uses: dianplus/cloud-instance-github-runner@master
@@ -110,9 +105,7 @@ jobs:
   setup-arm64:
     name: Setup ARM64 Spot Instance
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: write
+    # permissions configuration is optional since this Action uses PAT instead of GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
         uses: dianplus/cloud-instance-github-runner@master
@@ -128,7 +121,7 @@ jobs:
           vswitch_id_b: ${{ vars.ALIYUN_VSWITCH_ID_B }}
 ```
 
-**Note**: Aliyun image family names include architecture information (e.g., `acs:ubuntu_24_04_x64` for AMD64, `acs:ubuntu_24_04_arm64` for ARM64). You must ensure that the `aliyun_image_family` parameter matches the `arch` parameter. When creating runners for different architectures in the same workflow, provide the corresponding image family for each architecture.
+**Note**: Ensure `aliyun_image_family` matches `arch` (AMD64: `acs:ubuntu_24_04_x64`, ARM64: `acs:ubuntu_24_04_arm64`).
 
 ## Input Parameters
 
@@ -144,7 +137,7 @@ jobs:
 | `aliyun_image_id`          | Image ID (optional if `aliyun_image_family` is provided) | `m-xxx`                       |
 | `github_token`             | GitHub Token (for getting registration token)            | `${{ secrets.RUNNER_REGISTRATION_PAT }}` |
 
-**Important**: The `github_token` is used to call GitHub API to get runner registration token. **Note**: Simply configuring workflow's `permissions` is not sufficient. You must use a pre-configured PAT (Personal Access Token) with appropriate permissions. PAT permission requirements: Classic PATs require `repo` scope, while fine-grained PATs or GitHub Apps require `actions:write` permission. See the "Permission Configuration" section below for details.
+**Important**: `github_token` must be a PAT with appropriate permissions. See "Permission Configuration" below.
 
 ### Optional Parameters
 
@@ -165,7 +158,7 @@ jobs:
 | `no_proxy`                           | NO_PROXY environment variable value                    | -                   |
 | `vswitch_id_a` to `vswitch_id_z`     | VSwitch IDs for each availability zone                 | -                   |
 
-**Important Note - Proxy Configuration (Mainland China Regions)**: While proxy parameters are technically optional, if you are using Aliyun ECS instances in Mainland China regions (e.g., `cn-hangzhou`, `cn-beijing`), **it is strongly recommended to configure a proxy** due to network restrictions. Without a proxy, instances may be unable to access GitHub to download GitHub Actions Runner binaries and other required resources, which will cause runner initialization to fail. Ensure your proxy server can access `github.com` and `githubusercontent.com`.
+**Proxy Configuration (Mainland China Regions)**: Strongly recommended when using ECS instances in Mainland China regions.
 
 ## Output Parameters
 
@@ -182,7 +175,7 @@ jobs:
 
 #### Create VPC and VSwitches
 
-**Strongly Recommended**: For CI/CD tasks, it is strongly recommended to create a VPC environment isolated from production!
+Recommended to create a separate VPC for CI/CD.
 
 ```bash
 # Create VPC
@@ -236,22 +229,14 @@ Add the following Variables in repository settings:
 
 #### GitHub Actions Permissions
 
-**Important**: When using this Action, you must provide a pre-configured PAT (Personal Access Token) with appropriate permissions as `github_token`, because the Action needs to call GitHub API's `actions.createRegistrationTokenForRepo` interface via `github_token` to get runner registration token.
-
-**Note**: Simply configuring workflow's `permissions` is not sufficient. You must use a PAT with appropriate permissions.
+This Action uses PAT to generate registration token, not `GITHUB_TOKEN`. Workflow `permissions` configuration does not apply.
 
 PAT permission requirements:
 
-- **Classic PAT**: Requires `repo` scope
-- **Fine-grained PAT or GitHub Apps**: Requires `actions:write` permission, and **must be set to access all repositories**, because the runner needs to be able to create registration tokens for all repositories
-
-```yaml
-permissions:
-  contents: read
-  actions: write  # Configured, but actual permissions come from PAT
-```
-
-**Important**: Even if `permissions` is configured in the workflow, if the `github_token` (PAT) used does not have the appropriate permissions, it will still fail to get registration token and result in errors.
+- **Classic PAT**: `repo` scope
+- **Fine-grained PAT or GitHub Apps**:
+  - Access: All repositories
+  - Repository permissions: **Administration: Read and write** (repository-level, not organization-level)
 
 #### Aliyun RAM Permission Policy
 
@@ -284,97 +269,46 @@ RAM user needs the following permissions:
 
 #### Instance Self-Destruct Role (Optional)
 
-If enabling instance self-destruct feature, you need to create an ECS instance role and grant permissions to delete instances. The self-destruct mechanism allows ECS instances to be automatically deleted after Runner tasks complete, avoiding resource waste.
+Create an ECS instance role with instance deletion permissions to enable self-destruct.
 
-##### Create RAM Role
-
-1. **Log in to RAM Console**
-   - Visit [RAM Console](https://ram.console.aliyun.com/)
-   - Navigate to "Identity Management" > "Roles" in the left sidebar
-
-2. **Create Role**
-
-   ```bash
-   # Create role using Aliyun CLI
-   aliyun ram CreateRole \
-     --RoleName EcsSelfDestructRole \
-     --AssumeRolePolicyDocument '{
-       "Statement": [{
-         "Action": "sts:AssumeRole",
-         "Effect": "Allow",
-         "Principal": {
-           "Service": ["ecs.aliyuncs.com"]
-         }
-       }],
-       "Version": "1"
-     }'
-   ```
-
-   Or create via console:
-   - Click "Create Role"
-   - Select "Alibaba Cloud Service" as trusted entity type
-   - Select "Elastic Compute Service" as trusted service
-   - Set role name (e.g., `EcsSelfDestructRole`)
-   - Complete creation
-
-##### Grant Instance Deletion Permissions
-
-###### Recommended: Use Minimum Permission Policy
-
-Create a custom policy that only grants instance deletion permissions:
+**Create RAM Role:**
 
 ```bash
-# Create custom policy
+aliyun ram CreateRole \
+  --RoleName EcsSelfDestructRole \
+  --AssumeRolePolicyDocument '{
+    "Statement": [{
+      "Action": "sts:AssumeRole",
+      "Effect": "Allow",
+      "Principal": {"Service": ["ecs.aliyuncs.com"]}
+    }],
+    "Version": "1"
+  }'
+```
+
+**Create and attach policy:**
+
+```bash
 aliyun ram CreatePolicy \
   --PolicyName EcsSelfDestructPolicy \
   --PolicyDocument '{
     "Version": "1",
     "Statement": [{
       "Effect": "Allow",
-      "Action": [
-        "ecs:DeleteInstance",
-        "ecs:DescribeInstances"
-      ],
+      "Action": ["ecs:DeleteInstance", "ecs:DescribeInstances"],
       "Resource": "*"
     }]
   }'
 
-# Grant policy to role
 aliyun ram AttachPolicyToRole \
   --PolicyType Custom \
   --PolicyName EcsSelfDestructPolicy \
   --RoleName EcsSelfDestructRole
 ```
 
-**Or grant via console:**
+**Configure GitHub Variable:**
 
-- In role details page, click "Add Permissions"
-- Search and select custom policy `EcsSelfDestructPolicy` (or use `AliyunECSFullAccess` for full permissions, not recommended)
-- Complete authorization
-
-##### Configure GitHub Variables
-
-Add Variable in GitHub repository settings:
-
-- `ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME`: Set to the created role name (e.g., `EcsSelfDestructRole`)
-
-##### Instance Self-Destruct How It Works
-
-1. **Role Binding**: When creating ECS instance, the role is attached via `--RamRoleName` parameter
-2. **Self-Destruct Script**: On instance startup, User Data script creates self-destruct script at `/usr/local/bin/self-destruct.sh`
-3. **Permission Acquisition**: Self-destruct script obtains role temporary credentials via instance metadata service:
-
-   ```bash
-   curl http://100.100.100.200/latest/meta-data/ram/security-credentials/EcsSelfDestructRole
-   ```
-
-4. **Auto Deletion**: After Runner task completes, self-destruct script is executed via post-job hook or systemd service, using role permissions to call `DeleteInstance` API to delete the instance
-
-##### Verify Configuration
-
-- Check instance logs: `/var/log/user-data.log` should show role configuration information
-- Check self-destruct logs: `/var/log/self-destruct.log` records deletion process
-- Test: Create a test instance, wait for Runner to complete task, then verify instance is automatically deleted
+- `ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME`: Role name (e.g., `EcsSelfDestructRole`)
 
 ## Architecture Notes
 
@@ -392,11 +326,11 @@ Add Variable in GitHub repository settings:
 
 ## How It Works
 
-1. **Select Optimal Instance**: Use `spot-instance-advisor` tool to query for optimal Spot instances
-2. **Create Instance**: Call Aliyun API to create ECS Spot instance, passing User Data script
-3. **Configure Runner**: Instance automatically executes User Data script on startup to install and configure GitHub Actions Runner
-4. **Wait for Online**: Poll to check if Runner successfully registers and comes online
-5. **Auto Cleanup**: Automatically delete instance after Runner task completes (via post-job hook or systemd service)
+1. Use `spot-instance-advisor` to select optimal Spot instance
+2. Create ECS Spot instance with User Data script
+3. Instance automatically installs and configures GitHub Actions Runner on startup
+4. Wait for Runner to register and come online
+5. Automatically delete instance after task completion
 
 ## Troubleshooting
 

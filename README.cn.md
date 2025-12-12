@@ -27,9 +27,6 @@ jobs:
   setup:
     name: Setup Spot Instance
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: write
     outputs:
       instance_id: ${{ steps.setup-runner.outputs.instance_id }}
       runner_name: ${{ steps.setup-runner.outputs.runner_name }}
@@ -90,9 +87,7 @@ jobs:
   setup-amd64:
     name: Setup AMD64 Spot Instance
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: write
+    # permissions 配置是可选的，因为本 Action 使用 PAT 而非 GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
         uses: dianplus/cloud-instance-github-runner@master
@@ -110,9 +105,7 @@ jobs:
   setup-arm64:
     name: Setup ARM64 Spot Instance
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: write
+    # permissions 配置是可选的，因为本 Action 使用 PAT 而非 GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
         uses: dianplus/cloud-instance-github-runner@master
@@ -128,7 +121,7 @@ jobs:
           vswitch_id_b: ${{ vars.ALIYUN_VSWITCH_ID_B }}
 ```
 
-**注意**：阿里云镜像族名称包含架构信息（例如，AMD64 使用 `acs:ubuntu_24_04_x64`，ARM64 使用 `acs:ubuntu_24_04_arm64`）。您必须确保 `aliyun_image_family` 参数与 `arch` 参数匹配。在同一个 workflow 中为不同架构创建 runner 时，需要为每个架构提供对应的镜像族。
+**注意**：确保 `aliyun_image_family` 与 `arch` 参数匹配（AMD64: `acs:ubuntu_24_04_x64`，ARM64: `acs:ubuntu_24_04_arm64`）。
 
 ## 输入参数
 
@@ -144,7 +137,7 @@ jobs:
 | `aliyun_image_id`          | 镜像 ID（如果提供了 `aliyun_image_family` 则可选） | `m-xxx`                       |
 | `github_token`             | GitHub Token（用于获取 registration token）        | `${{ secrets.RUNNER_REGISTRATION_PAT }}` |
 
-**重要提示**：`github_token` 用于调用 GitHub API 获取 runner registration token。**注意**：仅配置 workflow 的 `permissions` 是不够的，必须使用预先配置了权限的 PAT (Personal Access Token)。PAT 的权限要求：经典 PAT 需要 `repo` scope，细粒度 PAT 或 GitHub Apps 需要 `actions:write` 权限。详见下方"权限配置"章节。
+**重要**：`github_token` 必须是具有相应权限的 PAT，详见下方"权限配置"章节。
 
 ### 可选参数
 
@@ -165,7 +158,7 @@ jobs:
 | `no_proxy`                           | NO_PROXY 环境变量值                  | -                   |
 | `vswitch_id_a` 到 `vswitch_id_z`     | 各可用区的 VSwitch ID                | -                   |
 
-**重要提示 - 代理配置（中国大陆区域）**：虽然代理参数在技术上是可选的，但如果您使用的是中国大陆区域的阿里云 ECS 实例（如 `cn-hangzhou`、`cn-beijing` 等），由于网络环境限制（GWF），**强烈建议配置代理**。如果不设置代理，实例可能无法访问 GitHub 来下载 GitHub Actions Runner 二进制文件和其他必要资源，导致 runner 初始化失败。请确保代理服务器可以正常访问 `github.com` 和 `githubusercontent.com`。
+**代理配置（中国大陆区域）**：使用中国大陆区域的 ECS 实例时，强烈建议配置代理以访问 GitHub。
 
 ## 输出参数
 
@@ -182,7 +175,7 @@ jobs:
 
 #### 创建 VPC 和 VSwitches
 
-**强烈建议**：对于 CI/CD 任务，强烈建议创建与生产环境隔离的 VPC 环境！
+建议为 CI/CD 创建独立的 VPC 环境。
 
 ```bash
 # 创建 VPC
@@ -236,22 +229,14 @@ aliyun ecs CreateSecurityGroup \
 
 #### GitHub Actions 权限
 
-**重要**：使用本 Action 时，必须提供一个预先配置了权限的 PAT (Personal Access Token) 作为 `github_token`，因为 Action 需要通过 `github_token` 调用 GitHub API 的 `actions.createRegistrationTokenForRepo` 接口来获取 runner registration token。
+本 Action 使用 PAT 生成 registration token，而非 `GITHUB_TOKEN`。workflow 的 `permissions` 配置对获取 registration token 不适用。
 
-**注意**：仅配置 workflow 的 `permissions` 是不够的，必须使用具有相应权限的 PAT。
+PAT 权限要求：
 
-PAT 的权限要求：
-
-- **经典 PAT**：需要 `repo` scope
-- **细粒度 PAT 或 GitHub Apps**：需要 `actions:write` 权限，且**必须设置为访问所有仓库（All repositories）**，因为 runner 需要能够为所有仓库创建 registration token
-
-```yaml
-permissions:
-  contents: read
-  actions: write  # 虽然配置了，但实际权限来自 PAT
-```
-
-**重要**：即使 workflow 中配置了 `permissions`，如果使用的 `github_token`（PAT）没有相应权限，仍然无法获取 registration token 并会报错。
+- **经典 PAT**：`repo` scope
+- **细粒度 PAT 或 GitHub Apps**：
+  - 访问范围：所有仓库（All repositories）
+  - Repository permissions：**Administration: Read and write**（仓库级别，非组织级别）
 
 #### 阿里云 RAM 权限策略
 
@@ -284,97 +269,46 @@ RAM 用户需要以下权限：
 
 #### 实例自毁角色（可选）
 
-如果启用实例自毁功能，需要创建 ECS 实例角色并授予删除实例的权限。实例自毁机制允许 Runner 任务完成后自动删除 ECS 实例，避免资源浪费。
+启用实例自毁功能需要创建 ECS 实例角色并授予删除实例权限。
 
-##### 创建 RAM 角色
-
-1. **登录 RAM 控制台**
-   - 访问 [RAM 控制台](https://ram.console.aliyun.com/)
-   - 在左侧导航栏选择"身份管理" > "角色"
-
-2. **创建角色**
-
-   ```bash
-   # 使用阿里云 CLI 创建角色
-   aliyun ram CreateRole \
-     --RoleName EcsSelfDestructRole \
-     --AssumeRolePolicyDocument '{
-       "Statement": [{
-         "Action": "sts:AssumeRole",
-         "Effect": "Allow",
-         "Principal": {
-           "Service": ["ecs.aliyuncs.com"]
-         }
-       }],
-       "Version": "1"
-     }'
-   ```
-
-   或通过控制台创建：
-   - 单击"创建角色"
-   - 选择"阿里云服务"作为可信实体类型
-   - 选择"云服务器ECS"作为受信服务
-   - 设置角色名称（如 `EcsSelfDestructRole`）
-   - 完成创建
-
-##### 为角色授予删除实例权限
-
-###### 推荐方式：使用最小权限策略
-
-创建自定义策略，仅授予删除实例的权限：
+**创建 RAM 角色：**
 
 ```bash
-# 创建自定义策略
+aliyun ram CreateRole \
+  --RoleName EcsSelfDestructRole \
+  --AssumeRolePolicyDocument '{
+    "Statement": [{
+      "Action": "sts:AssumeRole",
+      "Effect": "Allow",
+      "Principal": {"Service": ["ecs.aliyuncs.com"]}
+    }],
+    "Version": "1"
+  }'
+```
+
+**创建并授权策略：**
+
+```bash
 aliyun ram CreatePolicy \
   --PolicyName EcsSelfDestructPolicy \
   --PolicyDocument '{
     "Version": "1",
     "Statement": [{
       "Effect": "Allow",
-      "Action": [
-        "ecs:DeleteInstance",
-        "ecs:DescribeInstances"
-      ],
+      "Action": ["ecs:DeleteInstance", "ecs:DescribeInstances"],
       "Resource": "*"
     }]
   }'
 
-# 为角色授权
 aliyun ram AttachPolicyToRole \
   --PolicyType Custom \
   --PolicyName EcsSelfDestructPolicy \
   --RoleName EcsSelfDestructRole
 ```
 
-**或使用控制台授权：**
+**配置 GitHub Variable：**
 
-- 在角色详情页面，单击"添加权限"
-- 搜索并选择自定义策略 `EcsSelfDestructPolicy`（或使用 `AliyunECSFullAccess` 完整权限，不推荐）
-- 完成授权
-
-##### 配置到 GitHub Variables
-
-在 GitHub 仓库设置中添加 Variable：
-
-- `ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME`: 设置为创建的角色名称（如 `EcsSelfDestructRole`）
-
-##### 实例自毁工作原理
-
-1. **角色绑定**：创建 ECS 实例时，通过 `--RamRoleName` 参数将角色附加到实例
-2. **自毁脚本**：实例启动时，User Data 脚本会在 `/usr/local/bin/self-destruct.sh` 创建自毁脚本
-3. **权限获取**：自毁脚本通过实例元数据服务获取角色临时凭证：
-
-   ```bash
-   curl http://100.100.100.200/latest/meta-data/ram/security-credentials/EcsSelfDestructRole
-   ```
-
-4. **自动删除**：Runner 任务完成后，通过 post-job hook 或 systemd 服务执行自毁脚本，使用角色权限调用 `DeleteInstance` API 删除实例
-
-##### 验证配置
-
-- 检查实例日志：`/var/log/user-data.log` 应显示角色配置信息
-- 检查自毁日志：`/var/log/self-destruct.log` 记录删除过程
-- 测试：创建测试实例，等待 Runner 完成任务后验证实例是否自动删除
+- `ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME`: 角色名称（如 `EcsSelfDestructRole`）
 
 ## 架构说明
 
@@ -392,11 +326,11 @@ aliyun ram AttachPolicyToRole \
 
 ## 工作原理
 
-1. **选择最优实例**：使用 `spot-instance-advisor` 工具查询价格最优的 Spot 实例
-2. **创建实例**：调用阿里云 API 创建 ECS Spot 实例，传递 User Data 脚本
-3. **配置 Runner**：实例启动时自动执行 User Data 脚本，安装和配置 GitHub Actions Runner
-4. **等待上线**：轮询检查 Runner 是否成功注册并上线
-5. **自动清理**：Runner 任务完成后自动删除实例（通过 post-job hook 或 systemd service）
+1. 使用 `spot-instance-advisor` 选择最优 Spot 实例
+2. 创建 ECS Spot 实例并传递 User Data 脚本
+3. 实例启动时自动安装配置 GitHub Actions Runner
+4. 等待 Runner 注册上线
+5. 任务完成后自动删除实例
 
 ## 故障排查
 
