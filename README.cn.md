@@ -42,15 +42,24 @@ jobs:
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
-          aliyun_region_id: ${{ vars.ALIYUN_REGION_ID }}
+          aliyun_region_id: "cn-hangzhou"
           aliyun_vpc_id: ${{ vars.ALIYUN_VPC_ID }}
           aliyun_security_group_id: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
-          aliyun_image_id: ${{ vars.ALIYUN_AMD64_IMAGE_ID }}
+          aliyun_image_family: "acs:ubuntu_24_04_arm64"
+          aliyun_ecs_self_destruct_role_name: "GitHubRunnerSelfDestructRole"
+          aliyun_key_pair_name: ${{ secrets.ALIYUN_KEY_PAIR_NAME }}
           github_token: ${{ secrets.RUNNER_REGISTRATION_PAT }}
-          arch: amd64
+          arch: arm64
           min_cpu: 8
           vswitch_id_b: ${{ vars.ALIYUN_VSWITCH_ID_B }}
           vswitch_id_g: ${{ vars.ALIYUN_VSWITCH_ID_G }}
+          vswitch_id_h: ${{ vars.ALIYUN_VSWITCH_ID_H }}
+          vswitch_id_i: ${{ vars.ALIYUN_VSWITCH_ID_I }}
+          vswitch_id_j: ${{ vars.ALIYUN_VSWITCH_ID_J }}
+          vswitch_id_k: ${{ vars.ALIYUN_VSWITCH_ID_K }}
+          http_proxy: ${{ vars.HTTP_PROXY }}
+          https_proxy: ${{ vars.HTTPS_PROXY }}
+          no_proxy: ${{ vars.NO_PROXY }}
 
   build:
     name: Build
