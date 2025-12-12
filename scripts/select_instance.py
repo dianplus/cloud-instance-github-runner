@@ -100,6 +100,46 @@ def query_spot_instances(
         return None
 
 
+def query_specific_instance_type(
+    advisor_binary: str,
+    access_key_id: str,
+    access_key_secret: str,
+    region: str,
+    instance_type: str,
+) -> Optional[List[Dict]]:
+    """Query spot price for a specific instance type using --instanceType parameter (v1.0.2+)"""
+    cmd = [
+        advisor_binary,
+        f"-accessKeyId={access_key_id}",
+        f"-accessKeySecret={access_key_secret}",
+        f"-region={region}",
+        f"--instanceType={instance_type}",
+        "-limit=10",
+        "--json",
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+
+        if result.returncode != 0:
+            print(f"Warning: Query for instance type {instance_type} failed", file=sys.stderr)
+            if result.stderr:
+                print(f"  stderr: {result.stderr}", file=sys.stderr)
+            return None
+
+        if not result.stdout.strip():
+            return None
+
+        data = json.loads(result.stdout)
+        if not isinstance(data, list) or len(data) == 0:
+            return None
+
+        return data
+    except (json.JSONDecodeError, subprocess.SubprocessError) as e:
+        print(f"Warning: Query failed: {e}", file=sys.stderr)
+        return None
+
+
 def filter_instances(
     instances: List[Dict],
     min_cpu: int,
@@ -194,18 +234,65 @@ def get_vswitch_id(zone_id: str) -> Optional[str]:
     return os.environ.get(vswitch_var)
 
 
+def filter_instances_for_specific_type(
+    instances: List[Dict],
+    target_instance_type: str,
+    max_candidates: int = 10,
+) -> List[Tuple[str, str, float, int]]:
+    """Filter instances for a specific instance type (no CPU/memory validation)"""
+    candidates = []
+
+    for instance in instances:
+        instance_type = get_field_value(instance, "instanceTypeId", "instance_type", "InstanceType")
+        zone_id = get_field_value(instance, "zoneId", "zone_id", "ZoneId")
+        price_per_core = get_field_value(
+            instance, "pricePerCore", "price_per_core", "PricePerCore", "price", "Price"
+        )
+        cpu_cores = get_field_value(
+            instance, "cpuCoreCount", "cpu_cores", "CpuCores", "cores", "Cores"
+        )
+
+        if not instance_type or not zone_id or not price_per_core:
+            continue
+
+        if instance_type != target_instance_type:
+            continue
+
+        if cpu_cores:
+            try:
+                cpu_cores = int(cpu_cores)
+            except ValueError:
+                cpu_cores = None
+
+        if cpu_cores is None:
+            cpu_cores = parse_cpu_from_instance_type(instance_type)
+            if cpu_cores is None:
+                print(
+                    f"Warning: Could not determine CPU cores from instance type {instance_type}",
+                    file=sys.stderr,
+                )
+                cpu_cores = 0
+
+        try:
+            price_per_core = float(price_per_core)
+        except ValueError:
+            continue
+
+        candidates.append((instance_type, zone_id, price_per_core, cpu_cores))
+
+        if len(candidates) >= max_candidates:
+            break
+
+    return candidates
+
+
 def main():
     """Main function"""
-    # Get parameters from environment variables
+    # Get common parameters from environment variables
     access_key_id = get_env_var("ALIYUN_ACCESS_KEY_ID")
     access_key_secret = get_env_var("ALIYUN_ACCESS_KEY_SECRET")
     region_id = get_env_var("ALIYUN_REGION_ID")
-    arch = os.environ.get("ARCH", "amd64")
     advisor_binary = os.environ.get("SPOT_ADVISOR_BINARY", "./spot-instance-advisor")
-
-    # Validate architecture parameter
-    if arch not in ("amd64", "arm64"):
-        error_exit(f"ARCH must be either 'amd64' or 'arm64', got: {arch}")
 
     # Check if spot-instance-advisor tool exists
     if not os.path.isfile(advisor_binary):
@@ -214,128 +301,180 @@ def main():
     if not os.access(advisor_binary, os.X_OK):
         os.chmod(advisor_binary, 0o755)
 
-    # Set query parameters based on architecture
-    # Handle empty string case (GitHub Actions workflow_dispatch inputs may return empty string)
-    min_cpu_str = os.environ.get("MIN_CPU", "").strip()
-    min_cpu = int(min_cpu_str) if min_cpu_str else 8
+    # Check if specific instance type is provided
+    instance_type_override = os.environ.get("ALIYUN_INSTANCE_TYPE", "").strip()
 
-    max_cpu_str = os.environ.get("MAX_CPU", "").strip()
-    max_cpu = int(max_cpu_str) if max_cpu_str else 64
-
-    min_mem_str = os.environ.get("MIN_MEM", "").strip()
-    max_mem_str = os.environ.get("MAX_MEM", "").strip()
-
-    if arch == "amd64":
-        if min_mem_str:
-            min_mem = int(min_mem_str)
-        else:
-            min_mem = min_cpu  # 1:1
-        max_mem = int(max_mem_str) if max_mem_str else 64
-        arch_param = "x86_64"
-        print(
-            f"Info: Querying for AMD64 instances (CPU:RAM = 1:1, {min_cpu}c{min_mem}g to {max_cpu}c{max_mem}g)",
-            file=sys.stderr,
-        )
-    else:  # arm64
-        if min_mem_str:
-            min_mem = int(min_mem_str)
-        else:
-            min_mem = min_cpu * 2  # 1:2
-        max_mem = int(max_mem_str) if max_mem_str else 128
-        arch_param = "arm64"
-        print(
-            f"Info: Querying for ARM64 instances (CPU:RAM = 1:2, {min_cpu}c{min_mem}g to {max_cpu}c{max_mem}g)",
-            file=sys.stderr,
-        )
-
-    # Validate parameters
-    if min_cpu > max_cpu:
-        error_exit(f"MIN_CPU ({min_cpu}) must be less than or equal to MAX_CPU ({max_cpu})")
-
-    if min_mem > max_mem:
-        error_exit(f"MIN_MEM ({min_mem}) must be less than or equal to MAX_MEM ({max_mem})")
-
-    print(f"Querying spot instances for architecture: {arch}", file=sys.stderr)
-    print(f"Region: {region_id}", file=sys.stderr)
-    print(f"Starting with minimum requirements: {min_cpu}c{min_mem}g", file=sys.stderr)
-
-    # Record query start time
-    query_start_time = time.time()
-
-    # Define query strategies (in priority order)
-    query_strategies = []
-
-    if arch == "amd64":
-        # AMD64 strategy: 1:1 -> 1:2 -> 16-core 1:1 -> 16-core 1:2
-        query_strategies.append((min_cpu, min_cpu, True, "1:1"))
-        if min_cpu <= 32:
-            mem_1_2 = min_cpu * 2
-            query_strategies.append((min_cpu, mem_1_2, True, "1:2"))
-        if min_cpu < 16:
-            query_strategies.append((16, 16, True, "1:1"))
-        if min_cpu < 16:
-            query_strategies.append((16, 32, True, "1:2"))
-        # Fallback: range query
-        query_strategies.append((min_cpu, max_cpu, False, "range"))
-    else:  # arm64
-        # ARM64 strategy: 1:2 -> range query
-        mem_1_2 = min_cpu * 2
-        query_strategies.append((min_cpu, mem_1_2, True, "1:2"))
-        # Fallback: range query
-        query_strategies.append((min_cpu, max_cpu, False, "range"))
-
-    # Try each query strategy until results are found
-    json_result = None
-    query_attempt = 0
-
-    for strat_cpu, strat_mem, exact_match, desc in query_strategies:
-        query_attempt += 1
-
-        if exact_match:
-            print(
-                f"Attempt {query_attempt}: Exact match ({strat_cpu}c{strat_mem}g, {desc})",
-                file=sys.stderr,
-            )
-        else:
-            print(
-                f"Attempt {query_attempt}: Range query ({strat_cpu}-{max_cpu}c, {min_mem}-{max_mem}g)",
-                file=sys.stderr,
+    if instance_type_override:
+        # ===== Specific instance type mode =====
+        # Validate: only single instance type allowed
+        if "," in instance_type_override:
+            error_exit(
+                "ALIYUN_INSTANCE_TYPE only accepts a single instance type, "
+                "not comma-separated values"
             )
 
-        instances = query_spot_instances(
+        print(f"Info: Using specified instance type: {instance_type_override}", file=sys.stderr)
+        print(f"Region: {region_id}", file=sys.stderr)
+
+        query_start_time = time.time()
+
+        json_result = query_specific_instance_type(
             advisor_binary,
             access_key_id,
             access_key_secret,
             region_id,
-            strat_cpu,
-            max_cpu if not exact_match else strat_cpu,
-            strat_mem if exact_match else min_mem,
-            max_mem if not exact_match else strat_mem,
-            arch_param,
-            exact_match=exact_match,
+            instance_type_override,
         )
 
-        if instances:
-            json_result = instances
+        if not json_result:
+            error_exit(
+                f"No spot price found for instance type {instance_type_override}. "
+                "Please verify the instance type exists in this region."
+            )
+
+        query_end_time = time.time()
+        query_duration = query_end_time - query_start_time
+        print(f"Query completed in {query_duration:.2f} seconds", file=sys.stderr)
+
+        candidates = filter_instances_for_specific_type(
+            json_result, instance_type_override, max_candidates=10
+        )
+
+        if not candidates:
+            error_exit(f"No availability zones found for instance type {instance_type_override}")
+
+    else:
+        # ===== Original auto-selection logic (unchanged) =====
+        arch = os.environ.get("ARCH", "amd64")
+
+        # Validate architecture parameter
+        if arch not in ("amd64", "arm64"):
+            error_exit(f"ARCH must be either 'amd64' or 'arm64', got: {arch}")
+
+        # Set query parameters based on architecture
+        # Handle empty string case (GitHub Actions workflow_dispatch inputs may return empty string)
+        min_cpu_str = os.environ.get("MIN_CPU", "").strip()
+        min_cpu = int(min_cpu_str) if min_cpu_str else 8
+
+        max_cpu_str = os.environ.get("MAX_CPU", "").strip()
+        max_cpu = int(max_cpu_str) if max_cpu_str else 64
+
+        min_mem_str = os.environ.get("MIN_MEM", "").strip()
+        max_mem_str = os.environ.get("MAX_MEM", "").strip()
+
+        if arch == "amd64":
+            if min_mem_str:
+                min_mem = int(min_mem_str)
+            else:
+                min_mem = min_cpu  # 1:1
+            max_mem = int(max_mem_str) if max_mem_str else 64
+            arch_param = "x86_64"
             print(
-                f"Success: Found results with strategy {query_attempt} ({strat_cpu}c{strat_mem}g)",
+                f"Info: Querying for AMD64 instances (CPU:RAM = 1:1, {min_cpu}c{min_mem}g to {max_cpu}c{max_mem}g)",
                 file=sys.stderr,
             )
-            break
+        else:  # arm64
+            if min_mem_str:
+                min_mem = int(min_mem_str)
+            else:
+                min_mem = min_cpu * 2  # 1:2
+            max_mem = int(max_mem_str) if max_mem_str else 128
+            arch_param = "arm64"
+            print(
+                f"Info: Querying for ARM64 instances (CPU:RAM = 1:2, {min_cpu}c{min_mem}g to {max_cpu}c{max_mem}g)",
+                file=sys.stderr,
+            )
 
-    if not json_result:
-        error_exit("All query strategies failed. No spot instances found matching the criteria.")
+        # Validate parameters
+        if min_cpu > max_cpu:
+            error_exit(f"MIN_CPU ({min_cpu}) must be less than or equal to MAX_CPU ({max_cpu})")
 
-    # Record query end time and calculate duration
-    query_end_time = time.time()
-    query_duration = query_end_time - query_start_time
-    print(f"Query completed in {query_duration:.2f} seconds", file=sys.stderr)
+        if min_mem > max_mem:
+            error_exit(f"MIN_MEM ({min_mem}) must be less than or equal to MAX_MEM ({max_mem})")
 
-    # Filter instances
-    candidates = filter_instances(json_result, min_cpu, min_mem, arch, max_candidates=5)
+        print(f"Querying spot instances for architecture: {arch}", file=sys.stderr)
+        print(f"Region: {region_id}", file=sys.stderr)
+        print(f"Starting with minimum requirements: {min_cpu}c{min_mem}g", file=sys.stderr)
 
-    if not candidates:
-        error_exit(f"No instances found matching minimum requirements ({min_cpu}c{min_mem}g)")
+        # Record query start time
+        query_start_time = time.time()
+
+        # Define query strategies (in priority order)
+        query_strategies = []
+
+        if arch == "amd64":
+            # AMD64 strategy: 1:1 -> 1:2 -> 16-core 1:1 -> 16-core 1:2
+            query_strategies.append((min_cpu, min_cpu, True, "1:1"))
+            if min_cpu <= 32:
+                mem_1_2 = min_cpu * 2
+                query_strategies.append((min_cpu, mem_1_2, True, "1:2"))
+            if min_cpu < 16:
+                query_strategies.append((16, 16, True, "1:1"))
+            if min_cpu < 16:
+                query_strategies.append((16, 32, True, "1:2"))
+            # Fallback: range query
+            query_strategies.append((min_cpu, max_cpu, False, "range"))
+        else:  # arm64
+            # ARM64 strategy: 1:2 -> range query
+            mem_1_2 = min_cpu * 2
+            query_strategies.append((min_cpu, mem_1_2, True, "1:2"))
+            # Fallback: range query
+            query_strategies.append((min_cpu, max_cpu, False, "range"))
+
+        # Try each query strategy until results are found
+        json_result = None
+        query_attempt = 0
+
+        for strat_cpu, strat_mem, exact_match, desc in query_strategies:
+            query_attempt += 1
+
+            if exact_match:
+                print(
+                    f"Attempt {query_attempt}: Exact match ({strat_cpu}c{strat_mem}g, {desc})",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"Attempt {query_attempt}: Range query ({strat_cpu}-{max_cpu}c, {min_mem}-{max_mem}g)",
+                    file=sys.stderr,
+                )
+
+            instances = query_spot_instances(
+                advisor_binary,
+                access_key_id,
+                access_key_secret,
+                region_id,
+                strat_cpu,
+                max_cpu if not exact_match else strat_cpu,
+                strat_mem if exact_match else min_mem,
+                max_mem if not exact_match else strat_mem,
+                arch_param,
+                exact_match=exact_match,
+            )
+
+            if instances:
+                json_result = instances
+                print(
+                    f"Success: Found results with strategy {query_attempt} ({strat_cpu}c{strat_mem}g)",
+                    file=sys.stderr,
+                )
+                break
+
+        if not json_result:
+            error_exit(
+                "All query strategies failed. No spot instances found matching the criteria."
+            )
+
+        # Record query end time and calculate duration
+        query_end_time = time.time()
+        query_duration = query_end_time - query_start_time
+        print(f"Query completed in {query_duration:.2f} seconds", file=sys.stderr)
+
+        # Filter instances
+        candidates = filter_instances(json_result, min_cpu, min_mem, arch, max_candidates=5)
+
+        if not candidates:
+            error_exit(f"No instances found matching minimum requirements ({min_cpu}c{min_mem}g)")
 
     # Select first result with VSwitch ID (best price and zone has VSwitch)
     instance_type = None

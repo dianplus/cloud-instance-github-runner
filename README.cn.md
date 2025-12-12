@@ -5,6 +5,7 @@ GitHub Action 用于在阿里云 ECS Spot 实例上创建和设置 self-hosted r
 ## 功能特性
 
 - 动态选择最优 Spot 实例
+- 支持指定精确实例规格（绕过 CPU/内存/架构选择）
 - 自动创建 ECS Spot 实例
 - 自动安装和配置 GitHub Actions Runner
 - 支持 Ephemeral Runner 模式（任务完成后自动清理）
@@ -123,6 +124,38 @@ jobs:
 
 **注意**：确保 `aliyun_image_family` 与 `arch` 参数匹配（AMD64: `acs:ubuntu_24_04_x64`，ARM64: `acs:ubuntu_24_04_arm64`）。
 
+### 指定实例规格示例
+
+当需要使用特定实例规格时，可以使用 `aliyun_instance_type` 参数：
+
+```yaml
+name: Build with Specific Instance Type
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    name: Setup Spot Instance with Specific Type
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Aliyun ECS Spot Runner
+        uses: dianplus/cloud-instance-github-runner@master
+        with:
+          aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          aliyun_region_id: "cn-hangzhou"
+          aliyun_vpc_id: ${{ vars.ALIYUN_VPC_ID }}
+          aliyun_security_group_id: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
+          aliyun_image_family: "acs:ubuntu_24_04_x64"
+          github_token: ${{ secrets.RUNNER_REGISTRATION_PAT }}
+          aliyun_instance_type: "ecs.c7.2xlarge"
+          vswitch_id_b: ${{ vars.ALIYUN_VSWITCH_ID_B }}
+          vswitch_id_g: ${{ vars.ALIYUN_VSWITCH_ID_G }}
+```
+
+**注意**：当提供 `aliyun_instance_type` 参数时，`min_cpu`、`max_cpu`、`min_mem`、`max_mem` 和 `arch` 参数将被忽略。Action 将查询指定实例规格在所有可用区的 spot 价格。
+
 ## 输入参数
 
 ### 必需参数
@@ -148,6 +181,7 @@ jobs:
 | `aliyun_ecs_self_destruct_role_name` | 实例自毁角色名称                     | -                   |
 | `runner_labels`                      | Runner 标签（逗号分隔）              | `self-hosted,Linux,aliyun,spot-instance` |
 | `runner_version`                     | GitHub Actions Runner 版本           | `2.311.0`           |
+| `aliyun_instance_type`               | 指定实例规格（如 `ecs.c7.2xlarge`）。提供此参数时，将忽略 `min_cpu`/`max_cpu`/`min_mem`/`max_mem`/`arch` 参数，并查询该精确规格的 spot 价格。仅允许单个值。 | -                   |
 | `arch`                               | 架构（`amd64` 或 `arm64`）           | `amd64`             |
 | `min_cpu`                            | 最小 CPU 核心数                      | `8`                 |
 | `min_mem`                            | 最小内存 GB（会根据架构自动计算）    | -                   |
@@ -326,7 +360,7 @@ aliyun ram AttachPolicyToRole \
 
 ## 工作原理
 
-1. 使用 `spot-instance-advisor` 选择最优 Spot 实例
+1. 使用 `spot-instance-advisor` 选择最优 Spot 实例（如果提供了 `aliyun_instance_type`，则查询指定实例规格的 spot 价格）
 2. 创建 ECS Spot 实例并传递 User Data 脚本
 3. 实例启动时自动安装配置 GitHub Actions Runner
 4. 等待 Runner 注册上线

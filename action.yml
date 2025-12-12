@@ -48,6 +48,9 @@ inputs:
     default: "2.330.0"
 
   # Instance configuration
+  aliyun_instance_type:
+    description: "Specific instance type (e.g., ecs.c7.2xlarge). When provided, ignores min_cpu/max_cpu/min_mem/max_mem/arch and queries spot price for this exact type. Only single value allowed."
+    required: false
   arch:
     description: "Architecture (amd64 or arm64)"
     required: false
@@ -212,10 +215,10 @@ runs:
       shell: bash
       run: |
         echo "Fetching latest release version..." >&2
-        ADVISOR_VERSION=$(curl -s https://api.github.com/repos/maskshell/spot-instance-advisor/releases/latest | grep -o '"tag_name": "[^"]*' | cut -d'"' -f4 || echo "v1.0.1")
+        ADVISOR_VERSION=$(curl -s https://api.github.com/repos/maskshell/spot-instance-advisor/releases/latest | grep -o '"tag_name": "[^"]*' | cut -d'"' -f4 || echo "v1.0.2")
         if [[ -z "${ADVISOR_VERSION}" || "${ADVISOR_VERSION}" == "null" ]]; then
-          echo "Warning: Failed to fetch latest version, using fallback: v1.0.1 (first version with --arch support)" >&2
-          ADVISOR_VERSION="v1.0.1"
+          echo "Warning: Failed to fetch latest version, using fallback: v1.0.2 (first version with --arch support)" >&2
+          ADVISOR_VERSION="v1.0.2"
         fi
         echo "Using spot-instance-advisor version: ${ADVISOR_VERSION}" >&2
         echo "version=${ADVISOR_VERSION}" >> $GITHUB_OUTPUT
@@ -237,6 +240,7 @@ runs:
         ALIYUN_ACCESS_KEY_ID: ${{ inputs.aliyun_access_key_id }}
         ALIYUN_ACCESS_KEY_SECRET: ${{ inputs.aliyun_access_key_secret }}
         ALIYUN_REGION_ID: ${{ inputs.aliyun_region_id }}
+        ALIYUN_INSTANCE_TYPE: ${{ inputs.aliyun_instance_type }}
         ARCH: ${{ inputs.arch }}
         SPOT_ADVISOR_BINARY: ${{ steps.download-advisor.outputs.advisor_path }}
         MIN_CPU: ${{ inputs.min_cpu }}

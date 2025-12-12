@@ -5,6 +5,7 @@ GitHub Action for creating and setting up a self-hosted runner on Aliyun ECS Spo
 ## Features
 
 - Dynamic selection of optimal Spot instances
+- Support for specifying exact instance type (bypasses CPU/memory/arch selection)
 - Automatic ECS Spot instance creation
 - Automatic installation and configuration of GitHub Actions Runner
 - Support for Ephemeral Runner mode (automatic cleanup after task completion)
@@ -123,6 +124,38 @@ jobs:
 
 **Note**: Ensure `aliyun_image_family` matches `arch` (AMD64: `acs:ubuntu_24_04_x64`, ARM64: `acs:ubuntu_24_04_arm64`).
 
+### Specify Instance Type Example
+
+When you need to use a specific instance type, you can use the `aliyun_instance_type` parameter:
+
+```yaml
+name: Build with Specific Instance Type
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    name: Setup Spot Instance with Specific Type
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Aliyun ECS Spot Runner
+        uses: dianplus/cloud-instance-github-runner@master
+        with:
+          aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          aliyun_region_id: "cn-hangzhou"
+          aliyun_vpc_id: ${{ vars.ALIYUN_VPC_ID }}
+          aliyun_security_group_id: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
+          aliyun_image_family: "acs:ubuntu_24_04_x64"
+          github_token: ${{ secrets.RUNNER_REGISTRATION_PAT }}
+          aliyun_instance_type: "ecs.c7.2xlarge"
+          vswitch_id_b: ${{ vars.ALIYUN_VSWITCH_ID_B }}
+          vswitch_id_g: ${{ vars.ALIYUN_VSWITCH_ID_G }}
+```
+
+**Note**: When `aliyun_instance_type` is provided, the `min_cpu`, `max_cpu`, `min_mem`, `max_mem`, and `arch` parameters are ignored. The action will query spot prices for the specified instance type across all availability zones.
+
 ## Input Parameters
 
 ### Required Parameters
@@ -148,6 +181,7 @@ jobs:
 | `aliyun_ecs_self_destruct_role_name` | Instance Self-Destruct Role Name                       | -                   |
 | `runner_labels`                      | Runner labels (comma-separated)                        | `self-hosted,Linux,aliyun,spot-instance` |
 | `runner_version`                     | GitHub Actions Runner version                          | `2.311.0`           |
+| `aliyun_instance_type`               | Specific instance type (e.g., `ecs.c7.2xlarge`). When provided, ignores `min_cpu`/`max_cpu`/`min_mem`/`max_mem`/`arch` and queries spot price for this exact type. Only single value allowed. | -                   |
 | `arch`                               | Architecture (`amd64` or `arm64`)                      | `amd64`             |
 | `min_cpu`                            | Minimum CPU cores                                      | `8`                 |
 | `min_mem`                            | Minimum memory in GB (auto-calculated if not provided) | -                   |
@@ -326,7 +360,7 @@ aliyun ram AttachPolicyToRole \
 
 ## How It Works
 
-1. Use `spot-instance-advisor` to select optimal Spot instance
+1. Use `spot-instance-advisor` to select optimal Spot instance (or query spot price for a specific instance type if `aliyun_instance_type` is provided)
 2. Create ECS Spot instance with User Data script
 3. Instance automatically installs and configures GitHub Actions Runner on startup
 4. Wait for Runner to register and come online
