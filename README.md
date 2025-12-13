@@ -269,8 +269,9 @@ PAT permission requirements:
 
 - **Classic PAT**: `repo` scope
 - **Fine-grained PAT or GitHub Apps**:
-  - Access: All repositories
-  - Repository permissions: **Administration: Read and write** (repository-level, not organization-level)
+  - Access: Only repositories where this action will run
+  - Permissions: **Administration: Read and write** (repository-level, not organization-level)
+  - Set a reasonable expiration time
 
 #### Aliyun RAM Permission Policy
 

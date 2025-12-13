@@ -269,8 +269,9 @@ PAT 权限要求：
 
 - **经典 PAT**：`repo` scope
 - **细粒度 PAT 或 GitHub Apps**：
-  - 访问范围：所有仓库（All repositories）
-  - Repository permissions：**Administration: Read and write**（仓库级别，非组织级别）
+  - 访问范围：仅限运行本 action 的仓库
+  - 权限：**Administration: Read and write**（仓库级别，非组织级别）
+  - 设置合理的过期时间
 
 #### 阿里云 RAM 权限策略
 
