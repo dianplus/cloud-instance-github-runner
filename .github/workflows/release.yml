@@ -1,0 +1,131 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Matches semantic version tags like v1.0.0, v1.2.3, etc.
+
+jobs:
+  validate:
+    name: Validate Action
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate action.yml
+        uses: devops-actions/actionlint@v0.1.3
+
+      - name: Check action.yml syntax
+        run: |
+          # Basic YAML syntax check
+          python3 -c "import yaml; yaml.safe_load(open('action.yml'))"
+          echo "✓ action.yml syntax is valid"
+
+      - name: Verify required fields
+        run: |
+          # Check for required fields in action.yml
+          python3 << 'EOF'
+          import yaml
+          import sys
+
+          with open('action.yml', 'r') as f:
+              action = yaml.safe_load(f)
+
+          required_fields = ['name', 'description']
+          missing = [field for field in required_fields if field not in action]
+          
+          if missing:
+              print(f"❌ Missing required fields: {', '.join(missing)}")
+              sys.exit(1)
+
+          # Check branding section for marketplace
+          if 'branding' not in action:
+              print("⚠️  Warning: 'branding' section not found. Required for GitHub Marketplace.")
+          else:
+              if 'icon' not in action['branding'] or 'color' not in action['branding']:
+                  print("⚠️  Warning: 'branding.icon' or 'branding.color' missing. Required for GitHub Marketplace.")
+
+          print("✓ Required fields are present")
+          EOF
+
+  release:
+    name: Create Release
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          VERSION=${VERSION#v}  # Remove 'v' prefix if present
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          echo "Release version: ${VERSION}"
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo "")
+          
+          if [ -f CHANGELOG.md ]; then
+            # Extract changelog entry for this version
+            VERSION=${TAG#v}
+            awk -v version="$VERSION" '
+              /^## \[/ { 
+                if ($0 ~ "\\[" version "\\]") {
+                  in_section=1
+                  print $0
+                  next
+                } else if (in_section && /^## \[/) {
+                  exit
+                }
+              }
+              in_section { print }
+            ' CHANGELOG.md > /tmp/release_notes.md || echo "## ${TAG}" > /tmp/release_notes.md
+          else
+            # Fallback: generate from git log
+            if [ -n "$PREVIOUS_TAG" ]; then
+              git log --pretty=format:"- %s (%h)" "${PREVIOUS_TAG}..${TAG}" > /tmp/release_notes.md
+            else
+              git log --pretty=format:"- %s (%h)" --reverse > /tmp/release_notes.md
+            fi
+            echo "## ${TAG}" | cat - /tmp/release_notes.md > /tmp/release_notes.md.tmp && mv /tmp/release_notes.md.tmp /tmp/release_notes.md
+          fi
+
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          body_path: /tmp/release_notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+
+      - name: Output next steps
+        run: |
+          {
+            echo "## 🎉 Release Created Successfully!"
+            echo ""
+            echo "### Next Steps:"
+            echo ""
+            echo "1. Go to the [releases page](https://github.com/${{ github.repository }}/releases)"
+            echo "2. Find the release **${{ github.ref_name }}**"
+            echo "3. Click **Edit** on the release"
+            echo "4. Check the box **\"Publish this Action to the GitHub Marketplace\"**"
+            echo "5. Fill in the marketplace listing details and submit"
+            echo ""
+            echo "⚠️ **Note**: Publishing to GitHub Marketplace requires manual confirmation due to 2FA requirements."
+          } >> "$GITHUB_STEP_SUMMARY"

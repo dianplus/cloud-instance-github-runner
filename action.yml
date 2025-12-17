@@ -1,5 +1,8 @@
 name: "Setup Aliyun ECS Spot Runner"
 description: "Create and setup a self-hosted runner on Aliyun ECS Spot instance"
+branding:
+  icon: "server"
+  color: "orange"
 inputs:
   # Aliyun authentication information
   aliyun_access_key_id:
