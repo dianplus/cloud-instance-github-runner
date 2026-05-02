@@ -66,7 +66,7 @@ jobs:
     if: needs.setup.outputs.runner_online == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build
         run: |
@@ -160,37 +160,37 @@ jobs:
 
 ### 必需参数
 
-| 参数名                     | 描述                                               | 示例                          |
-| -------------------------- | -------------------------------------------------- | ----------------------------- |
-| `aliyun_access_key_id`     | 阿里云 Access Key ID                               | `LTAI5t...`                   |
-| `aliyun_access_key_secret` | 阿里云 Access Key Secret                           | `xxx...`                      |
-| `aliyun_region_id`         | 阿里云区域 ID                                      | `cn-hangzhou`                 |
-| `aliyun_vpc_id`            | VPC ID                                             | `vpc-xxx`                     |
-| `aliyun_security_group_id` | 安全组 ID                                          | `sg-xxx`                      |
-| `aliyun_image_id`          | 镜像 ID（如果提供了 `aliyun_image_family` 则可选） | `m-xxx`                       |
+| 参数名                     | 描述                                               | 示例                                     |
+| -------------------------- | -------------------------------------------------- | ---------------------------------------- |
+| `aliyun_access_key_id`     | 阿里云 Access Key ID                               | `LTAI5t...`                              |
+| `aliyun_access_key_secret` | 阿里云 Access Key Secret                           | `xxx...`                                 |
+| `aliyun_region_id`         | 阿里云区域 ID                                      | `cn-hangzhou`                            |
+| `aliyun_vpc_id`            | VPC ID                                             | `vpc-xxx`                                |
+| `aliyun_security_group_id` | 安全组 ID                                          | `sg-xxx`                                 |
+| `aliyun_image_id`          | 镜像 ID（如果提供了 `aliyun_image_family` 则可选） | `m-xxx`                                  |
 | `github_token`             | GitHub Token（用于获取 registration token）        | `${{ secrets.RUNNER_REGISTRATION_PAT }}` |
 
 **重要**：`github_token` 必须是具有相应权限的 PAT，详见下方"权限配置"章节。
 
 ### 可选参数
 
-| 参数名                               | 描述                                 | 默认值              |
-| ------------------------------------ | ------------------------------------ | ------------------- |
-| `aliyun_image_family`                | 镜像族系（优先于 `aliyun_image_id`）。必须与 `arch` 参数指定的架构匹配。例如，`amd64` 使用 `acs:ubuntu_24_04_x64`，`arm64` 使用 `acs:ubuntu_24_04_arm64`。可用的镜像族系请参考[阿里云公共镜像文档](https://help.aliyun.com/zh/ecs/user-guide/public-mirroring-overview/)。 | -                   |
-| `aliyun_key_pair_name`               | SSH 密钥对名称                       | -                   |
-| `aliyun_ecs_self_destruct_role_name` | 实例自毁角色名称                     | -                   |
-| `runner_labels`                      | Runner 标签（逗号分隔）              | `self-hosted,Linux,aliyun,spot-instance` |
-| `runner_version`                     | GitHub Actions Runner 版本           | `2.311.0`           |
-| `aliyun_instance_type`               | 指定实例规格（如 `ecs.c7.2xlarge`）。提供此参数时，将忽略 `min_cpu`/`max_cpu`/`min_mem`/`max_mem`/`arch` 参数，并查询该精确规格的 spot 价格。仅允许单个值。 | -                   |
-| `arch`                               | 架构（`amd64` 或 `arm64`）           | `amd64`             |
-| `min_cpu`                            | 最小 CPU 核心数                      | `8`                 |
-| `min_mem`                            | 最小内存 GB（会根据架构自动计算）    | -                   |
-| `max_cpu`                            | 最大 CPU 核心数                      | `64`                |
-| `max_mem`                            | 最大内存 GB（会根据架构自动计算）    | -                   |
-| `http_proxy`                         | HTTP 代理 URL                        | -                   |
-| `https_proxy`                        | HTTPS 代理 URL                       | -                   |
-| `no_proxy`                           | NO_PROXY 环境变量值                  | -                   |
-| `vswitch_id_a` 到 `vswitch_id_z`     | 各可用区的 VSwitch ID                | -                   |
+| 参数名                               | 描述                                                                                                                                                                                                                                                                       | 默认值                                   |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `aliyun_image_family`                | 镜像族系（优先于 `aliyun_image_id`）。必须与 `arch` 参数指定的架构匹配。例如，`amd64` 使用 `acs:ubuntu_24_04_x64`，`arm64` 使用 `acs:ubuntu_24_04_arm64`。可用的镜像族系请参考[阿里云公共镜像文档](https://help.aliyun.com/zh/ecs/user-guide/public-mirroring-overview/)。 | -                                        |
+| `aliyun_key_pair_name`               | SSH 密钥对名称                                                                                                                                                                                                                                                             | -                                        |
+| `aliyun_ecs_self_destruct_role_name` | 实例自毁角色名称                                                                                                                                                                                                                                                           | -                                        |
+| `runner_labels`                      | Runner 标签（逗号分隔）                                                                                                                                                                                                                                                    | `self-hosted,Linux,aliyun,spot-instance` |
+| `runner_version`                     | GitHub Actions Runner 版本                                                                                                                                                                                                                                                 | `2.311.0`                                |
+| `aliyun_instance_type`               | 指定实例规格（如 `ecs.c7.2xlarge`）。提供此参数时，将忽略 `min_cpu`/`max_cpu`/`min_mem`/`max_mem`/`arch` 参数，并查询该精确规格的 spot 价格。仅允许单个值。                                                                                                                | -                                        |
+| `arch`                               | 架构（`amd64` 或 `arm64`）                                                                                                                                                                                                                                                 | `amd64`                                  |
+| `min_cpu`                            | 最小 CPU 核心数                                                                                                                                                                                                                                                            | `8`                                      |
+| `min_mem`                            | 最小内存 GB（会根据架构自动计算）                                                                                                                                                                                                                                          | -                                        |
+| `max_cpu`                            | 最大 CPU 核心数                                                                                                                                                                                                                                                            | `64`                                     |
+| `max_mem`                            | 最大内存 GB（会根据架构自动计算）                                                                                                                                                                                                                                          | -                                        |
+| `http_proxy`                         | HTTP 代理 URL                                                                                                                                                                                                                                                              | -                                        |
+| `https_proxy`                        | HTTPS 代理 URL                                                                                                                                                                                                                                                             | -                                        |
+| `no_proxy`                           | NO_PROXY 环境变量值                                                                                                                                                                                                                                                        | -                                        |
+| `vswitch_id_a` 到 `vswitch_id_z`     | 各可用区的 VSwitch ID                                                                                                                                                                                                                                                      | -                                        |
 
 **代理配置（中国大陆区域）**：使用中国大陆区域的 ECS 实例时，强烈建议配置代理以访问 GitHub。
 
@@ -295,10 +295,7 @@ RAM 用户需要以下权限：
     },
     {
       "Effect": "Allow",
-      "Action": [
-        "vpc:DescribeVSwitches",
-        "vpc:DescribeVpcs"
-      ],
+      "Action": ["vpc:DescribeVSwitches", "vpc:DescribeVpcs"],
       "Resource": "*"
     },
     {
@@ -308,16 +305,11 @@ RAM 用户需要以下权限：
     },
     {
       "Effect": "Allow",
-      "Action": [
-        "ecs:DeleteInstance",
-        "ecs:DeleteInstances"
-      ],
+      "Action": ["ecs:DeleteInstance", "ecs:DeleteInstances"],
       "Resource": "acs:ecs:*:*:instance/*",
       "Condition": {
         "StringEquals": {
-          "acs:ResourceTag/GITHUB_RUNNER_TYPE": [
-            "aliyun-ecs-spot"
-          ]
+          "acs:ResourceTag/GITHUB_RUNNER_TYPE": ["aliyun-ecs-spot"]
         }
       }
     }

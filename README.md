@@ -66,7 +66,7 @@ jobs:
     if: needs.setup.outputs.runner_online == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build
         run: |
@@ -160,37 +160,37 @@ jobs:
 
 ### Required Parameters
 
-| Parameter                  | Description                                              | Example                       |
-| -------------------------- | -------------------------------------------------------- | ----------------------------- |
-| `aliyun_access_key_id`     | Aliyun Access Key ID                                     | `LTAI5t...`                   |
-| `aliyun_access_key_secret` | Aliyun Access Key Secret                                 | `xxx...`                      |
-| `aliyun_region_id`         | Aliyun Region ID                                         | `cn-hangzhou`                 |
-| `aliyun_vpc_id`            | VPC ID                                                   | `vpc-xxx`                     |
-| `aliyun_security_group_id` | Security Group ID                                        | `sg-xxx`                      |
-| `aliyun_image_id`          | Image ID (optional if `aliyun_image_family` is provided) | `m-xxx`                       |
+| Parameter                  | Description                                              | Example                                  |
+| -------------------------- | -------------------------------------------------------- | ---------------------------------------- |
+| `aliyun_access_key_id`     | Aliyun Access Key ID                                     | `LTAI5t...`                              |
+| `aliyun_access_key_secret` | Aliyun Access Key Secret                                 | `xxx...`                                 |
+| `aliyun_region_id`         | Aliyun Region ID                                         | `cn-hangzhou`                            |
+| `aliyun_vpc_id`            | VPC ID                                                   | `vpc-xxx`                                |
+| `aliyun_security_group_id` | Security Group ID                                        | `sg-xxx`                                 |
+| `aliyun_image_id`          | Image ID (optional if `aliyun_image_family` is provided) | `m-xxx`                                  |
 | `github_token`             | GitHub Token (for getting registration token)            | `${{ secrets.RUNNER_REGISTRATION_PAT }}` |
 
 **Important**: `github_token` must be a PAT with appropriate permissions. See "Permission Configuration" below.
 
 ### Optional Parameters
 
-| Parameter                            | Description                                            | Default             |
-| ------------------------------------ | ------------------------------------------------------ | ------------------- |
-| `aliyun_image_family`                | Image Family (takes precedence over `aliyun_image_id`). Must match the architecture specified in `arch` parameter. For example, use `acs:ubuntu_24_04_x64` for `amd64`, `acs:ubuntu_24_04_arm64` for `arm64`. See [Aliyun public image documentation](https://help.aliyun.com/zh/ecs/user-guide/public-mirroring-overview/) for available image families. | -                   |
-| `aliyun_key_pair_name`               | SSH Key Pair Name                                      | -                   |
-| `aliyun_ecs_self_destruct_role_name` | Instance Self-Destruct Role Name                       | -                   |
-| `runner_labels`                      | Runner labels (comma-separated)                        | `self-hosted,Linux,aliyun,spot-instance` |
-| `runner_version`                     | GitHub Actions Runner version                          | `2.311.0`           |
-| `aliyun_instance_type`               | Specific instance type (e.g., `ecs.c7.2xlarge`). When provided, ignores `min_cpu`/`max_cpu`/`min_mem`/`max_mem`/`arch` and queries spot price for this exact type. Only single value allowed. | -                   |
-| `arch`                               | Architecture (`amd64` or `arm64`)                      | `amd64`             |
-| `min_cpu`                            | Minimum CPU cores                                      | `8`                 |
-| `min_mem`                            | Minimum memory in GB (auto-calculated if not provided) | -                   |
-| `max_cpu`                            | Maximum CPU cores                                      | `64`                |
-| `max_mem`                            | Maximum memory in GB (auto-calculated if not provided) | -                   |
-| `http_proxy`                         | HTTP Proxy URL                                         | -                   |
-| `https_proxy`                        | HTTPS Proxy URL                                        | -                   |
-| `no_proxy`                           | NO_PROXY environment variable value                    | -                   |
-| `vswitch_id_a` to `vswitch_id_z`     | VSwitch IDs for each availability zone                 | -                   |
+| Parameter                            | Description                                                                                                                                                                                                                                                                                                                                               | Default                                  |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `aliyun_image_family`                | Image Family (takes precedence over `aliyun_image_id`). Must match the architecture specified in `arch` parameter. For example, use `acs:ubuntu_24_04_x64` for `amd64`, `acs:ubuntu_24_04_arm64` for `arm64`. See [Aliyun public image documentation](https://help.aliyun.com/zh/ecs/user-guide/public-mirroring-overview/) for available image families. | -                                        |
+| `aliyun_key_pair_name`               | SSH Key Pair Name                                                                                                                                                                                                                                                                                                                                         | -                                        |
+| `aliyun_ecs_self_destruct_role_name` | Instance Self-Destruct Role Name                                                                                                                                                                                                                                                                                                                          | -                                        |
+| `runner_labels`                      | Runner labels (comma-separated)                                                                                                                                                                                                                                                                                                                           | `self-hosted,Linux,aliyun,spot-instance` |
+| `runner_version`                     | GitHub Actions Runner version                                                                                                                                                                                                                                                                                                                             | `2.311.0`                                |
+| `aliyun_instance_type`               | Specific instance type (e.g., `ecs.c7.2xlarge`). When provided, ignores `min_cpu`/`max_cpu`/`min_mem`/`max_mem`/`arch` and queries spot price for this exact type. Only single value allowed.                                                                                                                                                             | -                                        |
+| `arch`                               | Architecture (`amd64` or `arm64`)                                                                                                                                                                                                                                                                                                                         | `amd64`                                  |
+| `min_cpu`                            | Minimum CPU cores                                                                                                                                                                                                                                                                                                                                         | `8`                                      |
+| `min_mem`                            | Minimum memory in GB (auto-calculated if not provided)                                                                                                                                                                                                                                                                                                    | -                                        |
+| `max_cpu`                            | Maximum CPU cores                                                                                                                                                                                                                                                                                                                                         | `64`                                     |
+| `max_mem`                            | Maximum memory in GB (auto-calculated if not provided)                                                                                                                                                                                                                                                                                                    | -                                        |
+| `http_proxy`                         | HTTP Proxy URL                                                                                                                                                                                                                                                                                                                                            | -                                        |
+| `https_proxy`                        | HTTPS Proxy URL                                                                                                                                                                                                                                                                                                                                           | -                                        |
+| `no_proxy`                           | NO_PROXY environment variable value                                                                                                                                                                                                                                                                                                                       | -                                        |
+| `vswitch_id_a` to `vswitch_id_z`     | VSwitch IDs for each availability zone                                                                                                                                                                                                                                                                                                                    | -                                        |
 
 **Proxy Configuration (Mainland China Regions)**: Strongly recommended when using ECS instances in Mainland China regions.
 
@@ -295,10 +295,7 @@ RAM user needs the following permissions:
     },
     {
       "Effect": "Allow",
-      "Action": [
-        "vpc:DescribeVSwitches",
-        "vpc:DescribeVpcs"
-      ],
+      "Action": ["vpc:DescribeVSwitches", "vpc:DescribeVpcs"],
       "Resource": "*"
     },
     {
@@ -308,16 +305,11 @@ RAM user needs the following permissions:
     },
     {
       "Effect": "Allow",
-      "Action": [
-        "ecs:DeleteInstance",
-        "ecs:DeleteInstances"
-      ],
+      "Action": ["ecs:DeleteInstance", "ecs:DeleteInstances"],
       "Resource": "acs:ecs:*:*:instance/*",
       "Condition": {
         "StringEquals": {
-          "acs:ResourceTag/GITHUB_RUNNER_TYPE": [
-            "aliyun-ecs-spot"
-          ]
+          "acs:ResourceTag/GITHUB_RUNNER_TYPE": ["aliyun-ecs-spot"]
         }
       }
     }

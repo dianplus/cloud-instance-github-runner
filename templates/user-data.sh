@@ -117,7 +117,7 @@ if ! command -v aliyun &> /dev/null; then
     echo "Error: Unsupported architecture for Aliyun CLI: ${ARCH}" >&2
     exit 1
   fi
-  
+
   # Download and install Aliyun CLI
   CLI_URL="https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-${CLI_ARCH}.tgz"
   echo "Downloading Aliyun CLI from: ${CLI_URL}"
@@ -125,13 +125,13 @@ if ! command -v aliyun &> /dev/null; then
     --retry 5 --retry-all-errors \
     --connect-timeout 10 --max-time 300 \
     "${CLI_URL}"
-  
+
   # Extract and install
   tar xzf /tmp/aliyun-cli.tgz -C /tmp
   mv /tmp/aliyun /usr/local/bin/aliyun
   chmod +x /usr/local/bin/aliyun
   rm -f /tmp/aliyun-cli.tgz
-  
+
   # Verify installation
   if command -v aliyun &> /dev/null; then
     ALIYUN_VERSION=$(aliyun version 2>/dev/null || echo "unknown")
