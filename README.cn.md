@@ -292,7 +292,8 @@ RAM 用户需要以下权限：
         "ecs:DescribeImages",
         "ecs:DescribeSecurityGroups",
         "ecs:DescribeAvailableResource",
-        "ecs:DescribeSpotPriceHistory"
+        "ecs:DescribeSpotPriceHistory",
+        "ecs:GetInstanceConsoleOutput"
       ],
       "Resource": "*"
     },

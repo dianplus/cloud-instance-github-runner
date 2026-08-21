@@ -292,7 +292,8 @@ RAM user needs the following permissions:
         "ecs:DescribeImages",
         "ecs:DescribeSecurityGroups",
         "ecs:DescribeAvailableResource",
-        "ecs:DescribeSpotPriceHistory"
+        "ecs:DescribeSpotPriceHistory",
+        "ecs:GetInstanceConsoleOutput"
       ],
       "Resource": "*"
     },
