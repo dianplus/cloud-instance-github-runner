@@ -255,3 +255,8 @@ celerybeat.pid
 
 # AI Agent
 AGENTS.md
+.claude/parallel-dev/loop-state.json
+.claude/parallel-dev/runs/
+.env.solidforge
+!.env.example
+!.env.solidforge.example
