@@ -1,0 +1,42 @@
+name: CI
+
+# Minimal Fast Gate on push/PR: the repo removed its workflows in 33eb439
+# when there was nothing to test. The instance-leak fix added a 14-test
+# regression suite (docs/postmortem/2026-08-21-*-failure.md) — this keeps
+# it honest against future changes to the three defense lines.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  gate:
+    name: Lint and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Sync dependencies (pinned by uv.lock)
+        run: uv sync --frozen
+
+      - name: Ruff check
+        run: uv run ruff check scripts/ tests/
+
+      - name: Ruff format check
+        run: uv run ruff format --check scripts/ tests/
+
+      - name: Pytest
+        run: uv run pytest -q
+
+      - name: Shell syntax check
+        run: |
+          bash -n templates/user-data.sh
+          for f in scripts/*.sh; do bash -n "$f"; done
+          echo "bash -n: all clean"
