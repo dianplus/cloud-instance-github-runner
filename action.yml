@@ -50,7 +50,7 @@ inputs:
     required: false
     default: "2.330.0"
   runner_wait_timeout:
-    description: "Seconds to wait for the runner to come online before the action fails. Cold bootstrap (OS update + runner download via proxy + registration) can take several minutes; raise this when bootstrapping through a proxy."
+    description: "Optional, no need to set explicitly: total seconds the action waits for the runner to come online (poll interval 10s; this is the total window, not a per-attempt timeout; instance-creation retries are governed separately). Default 120 preserves historical behavior; raise it only when cold bootstrap is slow, e.g. runner download through a proxy takes 3-6 minutes."
     required: false
     default: "120"
 
