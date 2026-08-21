@@ -28,9 +28,14 @@ on:
         options: [amd64, arm64]
         default: amd64
       failure_path:
-        description: "Also run the failure-path leg (dead proxy -> bootstrap failure -> instance must be destroyed without waiting for the TTL backstop)"
+        description: "Also run the failure-path leg (dead proxy -> bootstrap failure -> instance must be destroyed without waiting for the TTL backstop). Default true — scheduled runs cannot pass inputs and should verify full coverage."
         type: boolean
-        default: false
+        default: true
+  schedule:
+    # Monthly drift check: image families, spot market, proxy reachability and
+    # runner versions all drift — keep the three defense lines continuously
+    # verified on real instances instead of once at release time.
+    - cron: "23 3 1 * *"
 
 jobs:
   happy-path-setup:
