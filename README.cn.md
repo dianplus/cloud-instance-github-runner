@@ -246,6 +246,8 @@ aliyun ecs CreateSecurityGroup \
 
 - `ALIYUN_ACCESS_KEY_ID`: 阿里云 Access Key ID
 - `ALIYUN_ACCESS_KEY_SECRET`: 阿里云 Access Key Secret
+- `RUNNER_REGISTRATION_PAT`: 用于生成 runner registration token 的 GitHub PAT——下方所有用法示例都需要；权限要求见「权限配置」章节
+- `ALIYUN_KEY_PAIR_NAME`: SSH 密钥对名称（可选）
 
 #### Variables（非敏感配置）
 
@@ -257,7 +259,6 @@ aliyun ecs CreateSecurityGroup \
 - `ALIYUN_VSWITCH_ID_A` 到 `ALIYUN_VSWITCH_ID_Z`: 各可用区的 VSwitch ID（根据需要配置）
 - `ALIYUN_AMD64_IMAGE_ID`: AMD64 镜像 ID（推荐 Ubuntu 24）
 - `ALIYUN_ARM64_IMAGE_ID`: ARM64 镜像 ID（推荐 Ubuntu 24）
-- `ALIYUN_KEY_PAIR_NAME`: SSH 密钥对名称（可选）
 - `ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME`: 实例自毁角色名称（可选）
 
 ### 3. 权限配置

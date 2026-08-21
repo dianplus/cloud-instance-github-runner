@@ -246,6 +246,8 @@ Add the following Secrets in repository settings:
 
 - `ALIYUN_ACCESS_KEY_ID`: Aliyun Access Key ID
 - `ALIYUN_ACCESS_KEY_SECRET`: Aliyun Access Key Secret
+- `RUNNER_REGISTRATION_PAT`: GitHub PAT used to generate runner registration tokens — required by every usage example below; scope requirements in Permission Configuration
+- `ALIYUN_KEY_PAIR_NAME`: SSH Key Pair Name (optional)
 
 #### Variables (Non-sensitive Configuration)
 
@@ -257,7 +259,6 @@ Add the following Variables in repository settings:
 - `ALIYUN_VSWITCH_ID_A` to `ALIYUN_VSWITCH_ID_Z`: VSwitch IDs for each availability zone (configure as needed)
 - `ALIYUN_AMD64_IMAGE_ID`: AMD64 Image ID (recommended: Ubuntu 24)
 - `ALIYUN_ARM64_IMAGE_ID`: ARM64 Image ID (recommended: Ubuntu 24)
-- `ALIYUN_KEY_PAIR_NAME`: SSH Key Pair Name (optional)
 - `ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME`: Instance Self-Destruct Role Name (optional)
 
 ### 3. Permission Configuration
