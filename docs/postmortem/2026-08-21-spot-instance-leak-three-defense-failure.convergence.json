@@ -1,0 +1,194 @@
+{
+  "artifact": "docs/postmortem/2026-08-21-spot-instance-leak-three-defense-failure.md",
+  "authority_ref": "",
+  "size_tier": "long",
+  "cap": 5,
+  "rounds": [
+    {
+      "round": 1,
+      "same_source_findings": 6,
+      "hetero_findings": 0,
+      "hetero_degraded": true,
+      "blockers": 0,
+      "verdict": "pass",
+      "findings": [
+        {
+          "defect_id": "PM-COV-01",
+          "severity": "coverage",
+          "kind": "coverage-gap",
+          "location": "§3 防线1/2（旧代码行号引用）",
+          "evidence": "同源腿无 git 工具，旧版 cleanup-instance.sh:44-48 与 user-data.sh:217+ 不可在工作区核验；同批修复注释/蓝图与机理自洽但同属修复方产出。",
+          "suggestion": "由持有 git 的评审方对照 git show 6c18a60^ 核验。"
+        },
+        {
+          "defect_id": "PM-WARN-02",
+          "severity": "warning",
+          "kind": "coverage-gap",
+          "location": "§6 验证",
+          "evidence": "'20 万随机样本'与'sed 双重验证'在仓库无提交物载体，验证主张与可复核载体脱节。",
+          "suggestion": "固化为 tests/ 提交物或标注为一次性未提交验证。"
+        },
+        {
+          "defect_id": "PM-WARN-03",
+          "severity": "warning",
+          "kind": "structural-gap",
+          "location": "§4 根因归纳",
+          "evidence": "附加缺陷 3（failure()-only 触发面缺口）不属四条根因中任何一类：根因 2 是'触发但谎报'，附加缺陷 3 是'根本不运行'。",
+          "suggestion": "增补第 5 条根因或显式映射。"
+        },
+        {
+          "defect_id": "PM-COV-04",
+          "severity": "coverage",
+          "kind": "coverage-gap",
+          "location": "§6/§9/头部状态行",
+          "evidence": "TDD 计数、外审轮次、HEAD=6c18a60 均为无仓库载体的过程声明。",
+          "suggestion": "区分可复核载体与过程记录。"
+        },
+        {
+          "defect_id": "PM-COV-05",
+          "severity": "coverage",
+          "kind": "coverage-gap",
+          "location": "§8 已知债",
+          "evidence": "'7 条 pyright'精确计数无 baseline 固化、不可复核。",
+          "suggestion": "附输出摘录或改时点快照措辞。"
+        },
+        {
+          "defect_id": "PM-COV-06",
+          "severity": "coverage",
+          "kind": "coverage-gap",
+          "location": "§3 防线3/§7 清算手册",
+          "evidence": "AutoReleaseTime(PostPaid) 支持与 Tag.1.Key/Value 过滤语法为仓库外 API 主张，只读腿不可复核。",
+          "suggestion": "由可上网评审方对官方文档复核。"
+        }
+      ],
+      "dispositions": [
+        {
+          "defect_id": "PM-COV-01",
+          "action": "fixed",
+          "note": "orchestrator 以 git show 6c18a60^ 独立核验：旧 cleanup-instance.sh:44-48 逐字含 '--output text 2>/dev/null || echo \"NotFound\"' 与 Stopped→exit 0 分支；旧 user-data.sh ./config.sh:187 早于自毁安装:218。文档 §4 末尾加核验注。"
+        },
+        {
+          "defect_id": "PM-WARN-02",
+          "action": "fixed",
+          "note": "实质修复：新增提交物载体 tests/test_create_spot_instance.py::test_auto_release_time_random_boundary_property（2 万固定种子属性测试）与 tests/test_generate_user_data.py（真实生成器注入契约测试）；§6 重写为'仓库内可复核载体/会话过程记录'两分结构。"
+        },
+        {
+          "defect_id": "PM-WARN-03",
+          "action": "fixed",
+          "note": "§4 增补根因 4'触发面缺口'（failure()-only，cancelled 不触发清理），诚实限定本事件中未成为直接成因；原流程根因顺延为 5。"
+        },
+        {
+          "defect_id": "PM-COV-04",
+          "action": "fixed",
+          "note": "§6 第二段显式声明过程记录'仓库无载体，不可复核'；HEAD=6c18a60 经 orchestrator git log 核验。"
+        },
+        {
+          "defect_id": "PM-COV-05",
+          "action": "fixed",
+          "note": "§8 改为'修复时快照计数，未建 baseline 固化、随 pyright 版本浮动'。"
+        },
+        {
+          "defect_id": "PM-COV-06",
+          "action": "fixed",
+          "note": "orchestrator 会话内 WebFetch 官方文档核验：RunInstances 文档（AutoReleaseTime 仅 PostPaid、≥30 分钟、ISO8601 UTC）与 DescribeInstances 文档（Tag.1.Key/Tag.1.Value 为推荐大写形式、单标签上限 1000 条）；§3/§7 加来源与日期归属注。"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "same_source_findings": 5,
+      "hetero_findings": 0,
+      "hetero_degraded": true,
+      "blockers": 0,
+      "verdict": "pass",
+      "findings": [
+        {
+          "defect_id": "PM2-WARN-01",
+          "severity": "warning",
+          "kind": "citation-error",
+          "location": "§6 仓库内可复核载体第 3 条",
+          "evidence": "文档写'9 个注入值全部落入渲染产物'，但载体测试 FAKE_VALUES 为 8 个注入值 + 1 个刻意未注入的 RUNNER_LABELS（断言其保持默认行），计数相差一。",
+          "suggestion": "改为 8 个注入值 + 1 个未注入可选保持默认行的表述。"
+        },
+        {
+          "defect_id": "PM2-WARN-02",
+          "severity": "warning",
+          "kind": "citation-error",
+          "location": "§4 行号证据核验注",
+          "evidence": "注称'§3 引用的行号（注册 187/自毁安装 218）'，但 §3 仅引用 217+ 与 44-48，187/218 为注自身补充的精确定位，交叉引用范围错位（git 可核性本身成立，经 .git/logs/HEAD 确认 6c18a60 及其父存在）。",
+          "suggestion": "区分 §3 实际引用与注补充的精确定位。"
+        },
+        {
+          "defect_id": "PM2-COV-03",
+          "severity": "coverage",
+          "kind": "coverage-gap",
+          "location": "§3 API 语义核验注 / §7 官方限制注",
+          "evidence": "同源腿无网络，未能独立复验 help.aliyun.com 两处外部主张（与评审员既有知识一致、来源与日期归属清晰）。",
+          "suggestion": "维持来源+日期归属措辞。"
+        },
+        {
+          "defect_id": "PM2-COV-04",
+          "severity": "coverage",
+          "kind": "coverage-gap",
+          "location": "§4 行号证据核验注的核验结果声明",
+          "evidence": "同源腿无 shell/git，无法解压 git objects 重跑对照；已独立确认 6c18a60 存在且父为 fadc119，'本仓库 git 历史可核'为真，但'逐字一致'结果以作者会话记录为准。",
+          "suggestion": "无需修改文档。"
+        },
+        {
+          "defect_id": "PM2-COV-05",
+          "severity": "coverage",
+          "kind": "coverage-gap",
+          "location": "§8 pyright 计数",
+          "evidence": "同源腿无法运行 pyright 复核'7 条'；措辞已按要求改为时点快照披露，合格。",
+          "suggestion": "无需修改。"
+        }
+      ],
+      "dispositions": [
+        {
+          "defect_id": "PM2-WARN-01",
+          "action": "fixed",
+          "note": "§6 改为'锁定 9 个注入变量的契约（8 个注入值全部落入渲染产物 + 1 个未注入可选变量 RUNNER_LABELS 保持模板默认行）'，与载体测试逐字对齐。"
+        },
+        {
+          "defect_id": "PM2-WARN-02",
+          "action": "fixed",
+          "note": "§4 注改为区分'§3 的 44-48 与 217+ 引用'与'精确定位为 187/218 的补充'，交叉引用范围对齐。"
+        },
+        {
+          "defect_id": "PM2-COV-03",
+          "action": "rejected",
+          "note": "非文档缺陷：外部主张已由 orchestrator 会话内 WebFetch 官方文档核验（见 round 1 PM-COV-06 处置）；评审腿无网络属能力边界，转入 coverage notes 披露。"
+        },
+        {
+          "defect_id": "PM2-COV-04",
+          "action": "rejected",
+          "note": "非文档缺陷：git 对照已由 orchestrator（有 shell）执行并留存输出于会话记录；同源腿确认提交谱系存在。转入 coverage notes。"
+        },
+        {
+          "defect_id": "PM2-COV-05",
+          "action": "rejected",
+          "note": "非文档缺陷：计数已按 round 1 处置改为时点快照措辞如实披露；运行时不可达属评审腿能力边界。转入 coverage notes。"
+        }
+      ]
+    }
+  ],
+  "substantive_converged": true,
+  "rightness": "human_confirm_required",
+  "stalemate": false,
+  "coverage": [
+    "异源腿两轮均 DEGRADED：wrapper 两次运行（5min/10min 上限）零字节输出，判定 provider 网络停滞；按 reconcile 策略 DEGRADED→adopt same-family。异源盲区（跨族模型视角）本轮未覆盖，此为本次收敛的主要覆盖缺口。",
+    "外部 API 主张（AutoReleaseTime 语义/Tag 过滤语法/1000 条上限）由 orchestrator 于会话内 WebFetch help.aliyun.com 官方文档核验；同源评审腿无网络，未独立复验。",
+    "旧版代码行号对照由 orchestrator 以 git show 6c18a60^ 执行；同源腿无 git 工具，仅独立确认了提交谱系（6c18a60 及父 fadc119 存在）。",
+    "18ms 法证归因按文档 §2 自述不可复核（外部项目日志本仓库不可达），处置为措辞限定而非证据补强。",
+    "过程性数字（TDD RED/GREEN 计数、外审轮次、内环工具输出）以会话运行记录为准，仓库无载体；文档 §6 已显式区分。"
+  ],
+  "core_claims": [
+    "三道防线失效机理描述与修复前代码事实一致（git 历史核验）",
+    "18ms 法证归因措辞停留在高置信推断、未越界为事实断言",
+    "修复内容描述与 6c18a60 实际 diff 一致（机制/参数名/默认值 240/1800/3/12）",
+    "验证声明与实际一致且可复核载体齐备（12 AC 测试、属性测试、注入契约测试）",
+    "根因归纳（5 条，含触发面缺口）完整无重大遗漏",
+    "行动项可执行（标签键值与代码打标逐字一致、命令语法经官方文档核验）",
+    "残差与已知债披露准确且限定语完备"
+  ]
+}
