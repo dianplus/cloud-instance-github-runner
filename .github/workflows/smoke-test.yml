@@ -1,0 +1,214 @@
+name: Smoke Test
+
+# Manual smoke test for the three instance-leak defense lines (postmortem
+# docs/postmortem/2026-08-21-spot-instance-leak-three-defense-failure.md).
+# Structural tests cover section ordering only; this workflow validates the
+# runtime semantics on a real instance: AutoReleaseTime is set, the runner
+# comes online, and the instance self-destructs after one job (happy path),
+# or is destroyed despite a failed bootstrap (failure path).
+#
+# Required repository configuration:
+#   secrets: ALIYUN_ACCESS_KEY_ID, ALIYUN_ACCESS_KEY_SECRET,
+#            RUNNER_REGISTRATION_PAT (repo-admin registration-token permission)
+#   vars:    ALIYUN_VPC_ID, ALIYUN_SECURITY_GROUP_ID,
+#            ALIYUN_VSWITCH_ID_<ZONE> (at least one zone you use)
+#            optional: ALIYUN_REGION_ID (default cn-hangzhou),
+#            ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME (default GitHubRunnerSelfDestructRole)
+#
+# Assumption: no other runner in this repo carries the labels
+# [self-hosted, Linux, aliyun, spot-instance] — otherwise the smoke job may
+# be picked up by a different runner than the one just created.
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: "Instance architecture"
+        type: choice
+        options: [amd64, arm64]
+        default: amd64
+      failure_path:
+        description: "Also run the failure-path leg (dead proxy -> bootstrap failure -> instance must be destroyed without waiting for the TTL backstop)"
+        type: boolean
+        default: false
+
+jobs:
+  happy-path-setup:
+    name: Happy path - create runner and verify AutoReleaseTime
+    runs-on: ubuntu-latest
+    outputs:
+      instance_id: ${{ steps.setup-runner.outputs.instance_id }}
+      runner_online: ${{ steps.setup-runner.outputs.runner_online }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Aliyun ECS Spot Runner
+        id: setup-runner
+        uses: ./
+        with:
+          aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          aliyun_region_id: ${{ vars.ALIYUN_REGION_ID || 'cn-hangzhou' }}
+          aliyun_vpc_id: ${{ vars.ALIYUN_VPC_ID }}
+          aliyun_security_group_id: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
+          aliyun_image_family: ${{ inputs.arch == 'arm64' && 'acs:ubuntu_24_04_arm64' || 'acs:ubuntu_24_04_x64' }}
+          aliyun_ecs_self_destruct_role_name: ${{ vars.ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME || 'GitHubRunnerSelfDestructRole' }}
+          github_token: ${{ secrets.RUNNER_REGISTRATION_PAT }}
+          arch: ${{ inputs.arch }}
+          vswitch_id_b: ${{ vars.ALIYUN_VSWITCH_ID_B }}
+          vswitch_id_g: ${{ vars.ALIYUN_VSWITCH_ID_G }}
+          vswitch_id_h: ${{ vars.ALIYUN_VSWITCH_ID_H }}
+          vswitch_id_i: ${{ vars.ALIYUN_VSWITCH_ID_I }}
+          vswitch_id_j: ${{ vars.ALIYUN_VSWITCH_ID_J }}
+          vswitch_id_k: ${{ vars.ALIYUN_VSWITCH_ID_K }}
+
+      - name: Verify AutoReleaseTime is set (defense line 3)
+        uses: Liar0320/aliyun-cli-action@v1.0.2
+        with:
+          version: "3.2.2"
+          access-key-id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          region: ${{ vars.ALIYUN_REGION_ID || 'cn-hangzhou' }}
+
+      - name: Describe instance and check AutoReleaseTime
+        env:
+          INSTANCE_ID: ${{ steps.setup-runner.outputs.instance_id }}
+          REGION_ID: ${{ vars.ALIYUN_REGION_ID || 'cn-hangzhou' }}
+        run: |
+          if [[ -z "${INSTANCE_ID}" ]]; then
+            echo "ERROR: no instance_id output" >&2; exit 1
+          fi
+          AUTO_RELEASE=$(aliyun ecs DescribeInstances \
+            --RegionId "${REGION_ID}" \
+            --InstanceIds "[\"${INSTANCE_ID}\"]" \
+            | jq -r '.Instances.Instance[0].AutoReleaseTime // empty')
+          if [[ -z "${AUTO_RELEASE}" ]]; then
+            echo "ERROR: AutoReleaseTime is NOT set on ${INSTANCE_ID} — billing backstop missing" >&2
+            exit 1
+          fi
+          echo "AutoReleaseTime verified: ${AUTO_RELEASE} (defense line 3 live)"
+
+  smoke-job:
+    name: Happy path - one job on the ephemeral runner
+    needs: happy-path-setup
+    if: needs.happy-path-setup.outputs.runner_online == 'true'
+    runs-on: [self-hosted, Linux, aliyun, spot-instance]
+    steps:
+      - name: Prove the runner executes a job
+        run: |
+          echo "Running on ephemeral spot runner"
+          echo "Arch: $(uname -m)"
+
+  happy-path-verify-destroyed:
+    name: Happy path - instance self-destructs after the job
+    needs: [happy-path-setup, smoke-job]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Aliyun CLI
+        uses: Liar0320/aliyun-cli-action@v1.0.2
+        with:
+          version: "3.2.2"
+          access-key-id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          region: ${{ vars.ALIYUN_REGION_ID || 'cn-hangzhou' }}
+
+      - name: Poll until the instance is gone (bounded 8 min, far below the 240 min TTL)
+        env:
+          INSTANCE_ID: ${{ needs.happy-path-setup.outputs.instance_id }}
+          REGION_ID: ${{ vars.ALIYUN_REGION_ID || 'cn-hangzhou' }}
+          SMOKE_OUTCOME: ${{ needs.smoke-job.result }}
+        run: |
+          if [[ -z "${INSTANCE_ID}" ]]; then
+            echo "ERROR: no instance to verify (setup failed?)" >&2; exit 1
+          fi
+          echo "smoke-job result: ${SMOKE_OUTCOME:-skipped}"
+          for i in $(seq 1 48); do
+            TOTAL=$(aliyun ecs DescribeInstances \
+              --RegionId "${REGION_ID}" \
+              --InstanceIds "[\"${INSTANCE_ID}\"]" \
+              | jq -r '.TotalCount')
+            if [[ "${TOTAL}" == "0" ]]; then
+              echo "Instance ${INSTANCE_ID} verified gone after ~$((i * 10))s (post-job self-destruct)"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "ERROR: instance ${INSTANCE_ID} still present after 480s — fast-path defenses failed, only the TTL backstop remains" >&2
+          exit 1
+
+  failure-path:
+    name: Failure path - dead proxy must still end in destruction
+    if: inputs.failure_path
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # A dead proxy reproduces the original incident: instance is created,
+      # user-data survives the aliyun/CLI installs (NO_PROXY covers aliyun
+      # domains + metadata), then dies at the GitHub runner download or
+      # registration. The EXIT trap / watchdog / action cleanup must destroy
+      # the instance without waiting for the 240 min TTL backstop.
+      - name: Setup with dead proxy (expected to fail)
+        id: setup-runner
+        uses: ./
+        continue-on-error: true
+        with:
+          aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          aliyun_region_id: ${{ vars.ALIYUN_REGION_ID || 'cn-hangzhou' }}
+          aliyun_vpc_id: ${{ vars.ALIYUN_VPC_ID }}
+          aliyun_security_group_id: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
+          aliyun_image_family: ${{ inputs.arch == 'arm64' && 'acs:ubuntu_24_04_arm64' || 'acs:ubuntu_24_04_x64' }}
+          aliyun_ecs_self_destruct_role_name: ${{ vars.ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME || 'GitHubRunnerSelfDestructRole' }}
+          github_token: ${{ secrets.RUNNER_REGISTRATION_PAT }}
+          arch: ${{ inputs.arch }}
+          vswitch_id_b: ${{ vars.ALIYUN_VSWITCH_ID_B }}
+          vswitch_id_g: ${{ vars.ALIYUN_VSWITCH_ID_G }}
+          vswitch_id_h: ${{ vars.ALIYUN_VSWITCH_ID_H }}
+          vswitch_id_i: ${{ vars.ALIYUN_VSWITCH_ID_I }}
+          vswitch_id_j: ${{ vars.ALIYUN_VSWITCH_ID_J }}
+          vswitch_id_k: ${{ vars.ALIYUN_VSWITCH_ID_K }}
+          http_proxy: http://127.0.0.1:9
+          https_proxy: http://127.0.0.1:9
+
+      - name: The action must have failed loudly
+        run: |
+          if [[ "${{ steps.setup-runner.outcome }}" != "failure" ]]; then
+            echo "ERROR: setup was expected to fail (dead proxy) but outcome=${{ steps.setup-runner.outcome }}" >&2
+            exit 1
+          fi
+          echo "Setup failed as expected (dead proxy)"
+
+      - name: Install Aliyun CLI
+        uses: Liar0320/aliyun-cli-action@v1.0.2
+        with:
+          version: "3.2.2"
+          access-key-id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          region: ${{ vars.ALIYUN_REGION_ID || 'cn-hangzhou' }}
+
+      - name: Instance must be gone (trap/cleanup fast path, bounded 8 min, not the TTL)
+        env:
+          INSTANCE_ID: ${{ steps.setup-runner.outputs.instance_id }}
+          REGION_ID: ${{ vars.ALIYUN_REGION_ID || 'cn-hangzhou' }}
+        run: |
+          if [[ -z "${INSTANCE_ID}" ]]; then
+            echo "ERROR: instance was never created — failure-path smoke inconclusive" >&2
+            exit 1
+          fi
+          for i in $(seq 1 48); do
+            TOTAL=$(aliyun ecs DescribeInstances \
+              --RegionId "${REGION_ID}" \
+              --InstanceIds "[\"${INSTANCE_ID}\"]" \
+              | jq -r '.TotalCount')
+            if [[ "${TOTAL}" == "0" ]]; then
+              echo "Instance ${INSTANCE_ID} verified gone after ~$((i * 10))s despite failed bootstrap (trap/cleanup worked)"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "ERROR: instance ${INSTANCE_ID} leaked again after bootstrap failure — fast-path defenses failed" >&2
+          exit 1
