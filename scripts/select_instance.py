@@ -11,9 +11,10 @@ import subprocess
 import sys
 import tempfile
 import time
+from typing import NoReturn
 
 
-def error_exit(message: str) -> None:
+def error_exit(message: str) -> NoReturn:
     """Print error message and exit"""
     print(f"Error: {message}", file=sys.stderr)
     sys.exit(1)
@@ -171,7 +172,9 @@ def filter_instances(
             except ValueError:
                 cpu_cores = None
 
-        if cpu_cores is None:
+        # `not` (not `is None`): an empty-string field must also fall through
+        # to parsing — otherwise '' reaches the numeric comparisons below.
+        if not cpu_cores:
             cpu_cores = parse_cpu_from_instance_type(instance_type)
             if cpu_cores is None:
                 print(
@@ -187,7 +190,7 @@ def filter_instances(
             except ValueError:
                 memory_size = None
 
-        if memory_size is None:
+        if not memory_size:
             # Estimate memory based on architecture and CPU cores
             if arch == "amd64":
                 memory_size = cpu_cores  # 1:1
@@ -261,7 +264,9 @@ def filter_instances_for_specific_type(
             except ValueError:
                 cpu_cores = None
 
-        if cpu_cores is None:
+        # `not` (not `is None`): an empty-string field must also fall through
+        # to parsing — otherwise '' reaches the numeric comparisons below.
+        if not cpu_cores:
             cpu_cores = parse_cpu_from_instance_type(instance_type)
             if cpu_cores is None:
                 print(
@@ -503,6 +508,8 @@ def main():
         )
 
     # Calculate total price and price limit
+    if price_per_core is None or cpu_cores is None:
+        error_exit("Internal error: selected candidate is missing price or CPU core data")
     total_price = price_per_core * cpu_cores
     spot_price_limit = total_price * 1.2
 
