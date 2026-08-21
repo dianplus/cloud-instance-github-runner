@@ -45,7 +45,7 @@
 1. post-job-hook.sh 在 `svc.sh start` 之后才创建，而 `.env` 在服务启动前就引用它（首任务若早到则 hook 缺失）。
 2. 备份 systemd 服务的 `while systemctl is-active --quiet actions.runner.*` 循环：runner 服务未出现时 glob 不匹配 → 立即视为"已停止"→ 开机即自毁（race）。
 3. 清理步骤仅 `if: failure()`，未覆盖 `cancelled()`。
-4. 原报告旁证勘误："创建走 Python SDK"不成立——创建同为 subprocess 调 aliyun CLI；技术栈一致，缺陷在错误吞噬本身。
+4. 原报告旁证勘误（原始事故报告 = 外部项目调用方的运行日志分析，非本仓库文档）："创建走 Python SDK"不成立——创建同为 subprocess 调 aliyun CLI；技术栈一致，缺陷在错误吞噬本身。
 
 ## 4. 根因归纳
 
@@ -55,7 +55,7 @@
 4. **触发面缺口**: 清理仅挂 `if: failure()`——cancelled 的运行完全不触发清理（本事件中未成为直接成因，属同批修复的同类系统性缺口）。
 5. **流程根因**: 失败路径零测试覆盖——清理脚本在无 CLI、查询失败、删除后未消失等场景下从未被验证过。
 
-> 行号证据核验: 修复前代码引用（§3 的旧 `cleanup-instance.sh:44-48` 与旧 `user-data.sh:217+`，精确定位为注册 `./config.sh`:187、自毁安装:218）已经 git 历史对照核验（`git show 6c18a60^`），与文档描述逐字一致。
+> 行号证据核验: 修复前代码引用（§3 的旧 `cleanup-instance.sh:44-48` 与旧 `user-data.sh:217+`，精确定位为 `templates/user-data.sh` 内 `./config.sh` 注册调用位于 187 行、自毁安装章节起于 218 行）已经 git 历史对照核验（`git show 6c18a60^`），与文档描述逐字一致。
 
 ## 5. 修复内容（commit `6c18a60`）
 
@@ -71,7 +71,7 @@
 
 仓库内可复核载体（提交物）：
 
-- 12 条 AC 映射的回归测试（蓝图 AC→Test Mapping 1:1），stub 忠实模拟真实 aliyun CLI 语义（`--query` 无匹配 rc=1），杜绝假绿路径。
+- 12 条 AC 映射的回归测试（蓝图 `docs/intent-blueprints/fix-instance-leak-three-defenses-v1.blueprint.md` 的 AC→Test Mapping 1:1），stub 忠实模拟真实 aliyun CLI 语义（`--query` 无匹配 rc=1），杜绝假绿路径。
 - `tests/test_create_spot_instance.py::test_auto_release_time_random_boundary_property`: ceil 边界属性测试（2 万固定种子随机样本，任意小数秒 now 下 release ∈ [now+ttl, now+ttl+60s)）。
 - `tests/test_generate_user_data.py`: sed 注入契约测试——运行真实 `generate-user-data.sh`，锁定 9 个注入变量的契约（8 个注入值全部落入渲染产物 + 1 个未注入可选变量 RUNNER_LABELS 保持模板默认行），产物 `bash -n` 通过。
 
@@ -97,8 +97,9 @@ aliyun ecs DeleteInstance --RegionId <region> --InstanceId i-xxx --Force true
 ## 8. 残差与已知债（诚实披露）
 
 - 已接受残差: ~~cloud-final 的 cgroup KillMode 策略可能终止 trap 的 nohup 进程~~（已消除：trap 改经 `systemd-run` 瞬态单元触发自毁，独立 cgroup 不受 cloud-init 收尾影响，保留 nohup 回退）；实例被并发释放时清理措辞可能误导（方向安全，永不假绿）。
-- 已知债: `scripts/select_instance.py` pyright 报 7 条类型错误（修复时快照计数，未建 baseline 固化、随 pyright 版本浮动；修复需行为性守卫，超出本次冻结范围）。
+- 已知债: `scripts/select_instance.py` pyright 报 7 条类型错误（修复时快照计数，未建 baseline 固化、随 pyright 版本浮动；修复需行为性守卫，超出本次冻结范围）。**该债已于 2026-08-21 由 commit `521d97e` 清偿**（NoReturn 收窄 + 空串守卫，全仓 pyright 归零），此处保留为历史记录。
 - 结构测试上限: user-data.sh 在云端 cloud-init 内执行，AC-1/2/3 为结构锚点验证，运行时语义经外环推演复核而非行为级执行。
+- 引用覆盖上限: §3/§7 的阿里云官方文档主张（AutoReleaseTime 语义、Tag 过滤与 1000 条上限）系会话内 WebFetch 核验，原文未内联入文档——跨源评审者无法独立复审，属已知引用覆盖上限。
 
 ## 9. 行动项
 
