@@ -62,6 +62,12 @@ jobs:
           vswitch_id_i: ${{ vars.ALIYUN_VSWITCH_ID_I }}
           vswitch_id_j: ${{ vars.ALIYUN_VSWITCH_ID_J }}
           vswitch_id_k: ${{ vars.ALIYUN_VSWITCH_ID_K }}
+          # Runner download/registration needs GitHub access, which from
+          # cn-hangzhou ECS requires the VPC proxy (same as README examples).
+          # Empty vars degrade to direct connection.
+          http_proxy: ${{ vars.HTTP_PROXY }}
+          https_proxy: ${{ vars.HTTPS_PROXY }}
+          no_proxy: ${{ vars.NO_PROXY }}
 
       - name: Verify AutoReleaseTime is set (defense line 3)
         uses: Liar0320/aliyun-cli-action@v1.0.2
