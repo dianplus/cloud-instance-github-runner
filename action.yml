@@ -49,6 +49,10 @@ inputs:
     description: "GitHub Actions Runner version"
     required: false
     default: "2.330.0"
+  runner_wait_timeout:
+    description: "Seconds to wait for the runner to come online before the action fails. Cold bootstrap (OS update + runner download via proxy + registration) can take several minutes; raise this when bootstrapping through a proxy."
+    required: false
+    default: "120"
 
   # Instance configuration
   aliyun_instance_type:
@@ -408,7 +412,7 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         RUNNER_NAME: ${{ steps.runner-name.outputs.name }}
-        TIMEOUT: 120
+        TIMEOUT: ${{ inputs.runner_wait_timeout }}
         INTERVAL: 10
       run: |
         bash ${{ github.action_path }}/scripts/wait-for-runner.sh

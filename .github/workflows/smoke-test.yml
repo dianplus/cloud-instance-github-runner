@@ -68,6 +68,9 @@ jobs:
           http_proxy: ${{ vars.HTTP_PROXY }}
           https_proxy: ${{ vars.HTTPS_PROXY }}
           no_proxy: ${{ vars.NO_PROXY }}
+          # Cold bootstrap via the VPC proxy takes 3-6 min; the 120s default
+          # would kill healthy runs (both live smoke runs died at wait-runner).
+          runner_wait_timeout: "420"
 
       - name: Verify AutoReleaseTime is set (defense line 3)
         uses: Liar0320/aliyun-cli-action@v1.0.2
