@@ -96,7 +96,7 @@ aliyun ecs DeleteInstance --RegionId <region> --InstanceId i-xxx --Force true
 
 ## 8. 残差与已知债（诚实披露）
 
-- 已接受残差: cloud-final 的 cgroup KillMode 策略可能终止 trap 的 nohup 进程（看门狗独立单元 + 云端 TTL 兜底，最坏延迟 1800s）；实例被并发释放时清理措辞可能误导（方向安全，永不假绿）。
+- 已接受残差: ~~cloud-final 的 cgroup KillMode 策略可能终止 trap 的 nohup 进程~~（已消除：trap 改经 `systemd-run` 瞬态单元触发自毁，独立 cgroup 不受 cloud-init 收尾影响，保留 nohup 回退）；实例被并发释放时清理措辞可能误导（方向安全，永不假绿）。
 - 已知债: `scripts/select_instance.py` pyright 报 7 条类型错误（修复时快照计数，未建 baseline 固化、随 pyright 版本浮动；修复需行为性守卫，超出本次冻结范围）。
 - 结构测试上限: user-data.sh 在云端 cloud-init 内执行，AC-1/2/3 为结构锚点验证，运行时语义经外环推演复核而非行为级执行。
 

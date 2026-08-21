@@ -277,8 +277,16 @@ on_user_data_exit() {
   if [[ ${exit_code} -ne 0 ]]; then
     echo "Bootstrap failed (exit code ${exit_code}); triggering self-destruct"
     if [[ -x /usr/local/bin/self-destruct.sh ]]; then
-      nohup /usr/local/bin/self-destruct.sh >> /var/log/user-data.log 2>&1 &
-      echo "Self-destruct triggered in background (pid: $!)"
+      # Prefer a systemd transient unit: its own cgroup survives cloud-init
+      # teardown (KillMode=control-group would reap a plain nohup child when
+      # the cloud-final unit exits). nohup remains the fallback.
+      if systemd-run --unit=user-data-self-destruct --collect \
+          /usr/local/bin/self-destruct.sh >> /var/log/user-data.log 2>&1; then
+        echo "Self-destruct triggered via transient systemd unit (user-data-self-destruct)"
+      else
+        nohup /usr/local/bin/self-destruct.sh >> /var/log/user-data.log 2>&1 &
+        echo "Self-destruct triggered in background via nohup fallback (pid: $!)"
+      fi
     else
       echo "Warning: /usr/local/bin/self-destruct.sh not armed yet; nothing to trigger"
     fi
