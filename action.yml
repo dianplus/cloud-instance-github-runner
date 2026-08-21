@@ -425,7 +425,22 @@ runs:
         ALIYUN_ACCESS_KEY_SECRET: ${{ inputs.aliyun_access_key_secret }}
         ALIYUN_REGION_ID: ${{ inputs.aliyun_region_id }}
         INSTANCE_ID: ${{ steps.create-instance.outputs.instance_id }}
+        CONSOLE_LOG_FILE: /tmp/instance-console.log
       run: |
         if [[ -n "${INSTANCE_ID}" ]]; then
+          # Forensics before destruction: the console output only survives
+          # until the instance is deleted. The fetch itself is best-effort
+          # (never exits non-zero) and cannot block the cleanup below.
+          bash ${{ github.action_path }}/scripts/fetch-console-output.sh
           bash ${{ github.action_path }}/scripts/cleanup-instance.sh
         fi
+
+    - name: Upload Instance Console Log
+      if: failure() || cancelled()
+      uses: actions/upload-artifact@v4
+      with:
+        # When creation never produced an instance ID, GitHub renders an
+        # empty string here; if-no-files-found: ignore keeps that harmless.
+        name: instance-console-${{ steps.create-instance.outputs.instance_id }}
+        path: /tmp/instance-console.log
+        if-no-files-found: ignore

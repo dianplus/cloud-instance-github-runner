@@ -13,11 +13,20 @@ subset of calls used by ``scripts/cleanup-instance.sh``:
   post-delete polling: the 1st subsequent ``DescribeInstances`` still reports
   the pre-delete status; the 2nd onwards report the empty set (counted via the
   ``poll-count`` file).
+* ``GetInstanceConsoleOutput`` (blueprint failure-forensics-console-output-v1,
+  AC-5): when the ``console_b64`` marker file exists, prints
+  ``{"ConsoleOutput": "<raw marker content>"}`` on stdout with rc 0 (python3
+  assembles the JSON so multi-line base64 payloads are escaped safely); with
+  no marker, exits rc 1 with a simulated stderr error. The invocation is
+  recorded in ``aliyun-calls.log`` like every other subcommand.
 
 Behavior modes are selected by marker files under ``tmp_path``:
 
 * ``describe_empty`` -- instance set is empty (rc 0 + empty JSON body)
 * ``describe_fail``  -- DescribeInstances fails: rc 1 + stderr error message
+* ``console_b64``    -- GetInstanceConsoleOutput payload: the raw file content
+  is embedded verbatim as the JSON ``ConsoleOutput`` string (the script under
+  test must base64-decode it after JSON parsing); absent marker -> rc 1 error
 * default            -- single instance whose status is the content of the
   ``describe_status`` file (the fixture seeds it with ``Running``)
 """
@@ -47,9 +56,10 @@ echo "$*" >> "${CALLS_LOG}"
 SUBCOMMAND="other"
 for arg in "$@"; do
   case "${arg}" in
-    DescribeInstances) SUBCOMMAND="describe" ;;
-    DeleteInstance)    SUBCOMMAND="delete" ;;
-    version)           SUBCOMMAND="version" ;;
+    DescribeInstances)         SUBCOMMAND="describe" ;;
+    DeleteInstance)            SUBCOMMAND="delete" ;;
+    GetInstanceConsoleOutput)  SUBCOMMAND="console" ;;
+    version)                   SUBCOMMAND="version" ;;
   esac
 done
 
@@ -133,6 +143,26 @@ case "${SUBCOMMAND}" in
     ;;
   version)
     echo "3.2.2-stub"
+    exit 0
+    ;;
+  console)
+    # Blueprint failure-forensics-console-output-v1 (AC-5): marker-driven
+    # GetInstanceConsoleOutput emulation. No marker -> simulated API failure.
+    CONSOLE_B64_FILE="${BASE_DIR}/console_b64"
+    if [[ ! -f "${CONSOLE_B64_FILE}" ]]; then
+      echo "STUB aliyun: simulated GetInstanceConsoleOutput failure (instance gone)" >&2
+      exit 1
+    fi
+    # Emit {"ConsoleOutput": "<raw marker content>"}; python3 assembles the
+    # JSON so multi-line base64 payloads are escaped safely.
+    python3 - "${CONSOLE_B64_FILE}" <<'PYEOF'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    payload = fh.read()
+print(json.dumps({"ConsoleOutput": payload}))
+PYEOF
     exit 0
     ;;
   *)

@@ -48,3 +48,101 @@ def test_cleanup_step_runs_on_failure_or_cancelled():
         "AC-11: the Create Spot Instance step env must inject INSTANCE_TTL_MINUTES "
         "so user-data/cloud-side TTL has a single source of truth"
     )
+
+
+def _step_block_containing(fragment):
+    """Return the lines of the workflow step block containing a line with fragment.
+
+    The block spans from the nearest preceding '- name:' line up to (excluding)
+    the next '- name:' line or EOF. Returns None when no line contains fragment.
+    """
+    hit_idx = _line_index_of(fragment)
+    if hit_idx is None:
+        return None
+    start_idx = hit_idx
+    while start_idx > 0 and not re.match(r"^\s*-\s+name:", ACTION_YML_LINES[start_idx]):
+        start_idx -= 1
+    end_idx = start_idx + 1
+    while end_idx < len(ACTION_YML_LINES) and not re.match(
+        r"^\s*-\s+name:", ACTION_YML_LINES[end_idx]
+    ):
+        end_idx += 1
+    return ACTION_YML_LINES[start_idx:end_idx]
+
+
+def test_cleanup_captures_console_output_before_deletion():
+    # Blueprint failure-forensics-console-output-v1:
+    # AC-3: inside Cleanup on Failure, fetch-console-output.sh must run BEFORE
+    #       cleanup-instance.sh (console output only survives until deletion).
+    # AC-4: a follow-up upload-artifact@v4 step archives the console log on
+    #       failure()/cancelled() and must not error when the log is absent.
+    cleanup_block = _step_block_containing("- name: Cleanup on Failure")
+    assert cleanup_block is not None, "AC-3: 'Cleanup on Failure' step not declared in action.yml"
+
+    fetch_idx = next(
+        (i for i, line in enumerate(cleanup_block) if "fetch-console-output.sh" in line), None
+    )
+    assert fetch_idx is not None, (
+        "AC-3: the Cleanup on Failure step must invoke fetch-console-output.sh "
+        "(forensics before destruction); step block:\n" + "\n".join(cleanup_block)
+    )
+    delete_idx = next(
+        (i for i, line in enumerate(cleanup_block) if "cleanup-instance.sh" in line), None
+    )
+    assert delete_idx is not None, (
+        "AC-3: the Cleanup on Failure step must still invoke cleanup-instance.sh; "
+        "step block:\n" + "\n".join(cleanup_block)
+    )
+    assert fetch_idx < delete_idx, (
+        "AC-3: fetch-console-output.sh must be invoked BEFORE cleanup-instance.sh -- "
+        "console output is unrecoverable once the instance is deleted"
+    )
+
+    upload_block = _step_block_containing("actions/upload-artifact@v4")
+    assert upload_block is not None, (
+        "AC-4: action.yml must declare an upload-artifact@v4 step that archives "
+        "the instance console log"
+    )
+    if_lines = [line for line in upload_block if re.match(r"^\s*if:", line)]
+    assert any("failure()" in line and "cancelled()" in line for line in if_lines), (
+        "AC-4: the upload step's if condition must cover both failure() and "
+        "cancelled(); step block:\n" + "\n".join(upload_block)
+    )
+    assert re.search(r"(?im)^\s*path:.*(console\.log|console_log_file)", "\n".join(upload_block)), (
+        "AC-4: upload-artifact 'with.path' must point at the CONSOLE_LOG_FILE "
+        "location (console.log semantics); step block:\n" + "\n".join(upload_block)
+    )
+    assert re.search(r"(?im)^\s*if-no-files-found:\s*ignore\s*$", "\n".join(upload_block)), (
+        "AC-4: upload-artifact must set if-no-files-found: ignore so neither the "
+        "success path nor a forensic fetch failure produces an empty-artifact "
+        "error; step block:\n" + "\n".join(upload_block)
+    )
+
+    # Outer-review Note-3: the artifact name must be identifiable per instance
+    # (references the create-instance instance_id output).
+    name_lines = [line for line in upload_block if re.match(r"(?i)^\s*name:", line)]
+    assert name_lines and all(
+        "instance_id" in line and "instance-console" in line for line in name_lines
+    ), (
+        "AC-4: the artifact name must reference steps.create-instance.outputs."
+        "instance_id so the archive is identifiable per instance; step block:\n"
+        + "\n".join(upload_block)
+    )
+
+    # Outer-review Note-4: the CONSOLE_LOG_FILE env literal and the upload
+    # path literal must be exactly equal -- two hand-maintained copies that
+    # can silently drift.
+    env_match = re.search(r"(?im)^\s*CONSOLE_LOG_FILE:\s*(\S+)", "\n".join(cleanup_block))
+    path_match = re.search(r"(?im)^\s*path:\s*(\S+)", "\n".join(upload_block))
+    assert env_match and path_match, (
+        "AC-4: cleanup step must set CONSOLE_LOG_FILE env and the upload step "
+        "must declare with.path; blocks:\n"
+        + "\n".join(cleanup_block)
+        + "\n---\n"
+        + "\n".join(upload_block)
+    )
+    assert env_match.group(1) == path_match.group(1), (
+        "AC-4: CONSOLE_LOG_FILE env and upload-artifact path literals must be "
+        f"identical (got {env_match.group(1)!r} vs {path_match.group(1)!r}); "
+        "drift loses the forensics artifact"
+    )
