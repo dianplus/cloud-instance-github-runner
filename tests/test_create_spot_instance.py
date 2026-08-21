@@ -5,6 +5,7 @@ __name__ == "__main__" so importing is side-effect free.
 """
 
 import importlib.util
+import random
 import re
 import subprocess
 import types
@@ -94,3 +95,23 @@ def test_run_instances_command_includes_auto_release_time(monkeypatch):
         "AC-10: --AutoReleaseTime must be followed by an ISO8601 UTC value; "
         f"got {cmd[flag_idx + 1]!r}; cmd:\n{cmd}"
     )
+
+
+def test_auto_release_time_random_boundary_property():
+    # Boundary property of the ceil-to-minute computation: for ANY fractional
+    # now and legal ttl, the release time is never earlier than now + ttl
+    # minutes (the 30-minute API minimum holds even at ttl=30 with a nonzero
+    # second fraction) and never more than one minute beyond it.
+    # Seeded regression carrier for the one-off 200k-sample outer-review check.
+    rng = random.Random(20260821)
+    for _ in range(20_000):
+        now = rng.uniform(1_700_000_000, 1_900_000_000)
+        ttl = rng.choice((30, 31, 240, 480))
+        release_time = create_spot_instance.compute_auto_release_time(ttl, now)
+        assert ISO_Z_RE.match(release_time), f"bad format {release_time!r} (now={now})"
+        ts = datetime.fromisoformat(release_time.replace("Z", "+00:00")).timestamp()
+        delta = ts - now
+        assert ttl * 60 <= delta < ttl * 60 + 60, (
+            f"release must be within [now+ttl, now+ttl+60s); "
+            f"got delta={delta:.1f}s for ttl={ttl}, now={now}, rt={release_time}"
+        )
