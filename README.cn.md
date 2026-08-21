@@ -36,7 +36,7 @@ jobs:
     steps:
       - name: Setup Aliyun ECS Spot Runner
         id: setup-runner
-        uses: dianplus/cloud-instance-github-runner@master
+        uses: dianplus/cloud-instance-github-runner@v1.1.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -91,7 +91,7 @@ jobs:
     # permissions 配置是可选的，因为本 Action 使用 PAT 而非 GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@master
+        uses: dianplus/cloud-instance-github-runner@v1.1.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -109,7 +109,7 @@ jobs:
     # permissions 配置是可选的，因为本 Action 使用 PAT 而非 GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@master
+        uses: dianplus/cloud-instance-github-runner@v1.1.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -140,7 +140,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@master
+        uses: dianplus/cloud-instance-github-runner@v1.1.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -180,7 +180,7 @@ jobs:
 | `aliyun_key_pair_name`               | SSH 密钥对名称                                                                                                                                                                                                                                                             | -                                        |
 | `aliyun_ecs_self_destruct_role_name` | 实例自毁角色名称                                                                                                                                                                                                                                                           | -                                        |
 | `runner_labels`                      | Runner 标签（逗号分隔）                                                                                                                                                                                                                                                    | `self-hosted,Linux,aliyun,spot-instance` |
-| `runner_version`                     | GitHub Actions Runner 版本                                                                                                                                                                                                                                                 | `2.311.0`                                |
+| `runner_version`                     | GitHub Actions Runner 版本                                                                                                                                                                                                                                                 | `2.330.0`                                |
 | `aliyun_instance_type`               | 指定实例规格（如 `ecs.c7.2xlarge`）。提供此参数时，将忽略 `min_cpu`/`max_cpu`/`min_mem`/`max_mem`/`arch` 参数，并查询该精确规格的 spot 价格。仅允许单个值。                                                                                                                | -                                        |
 | `instance_ttl_minutes`               | 实例硬性生命周期上限（分钟）。到期后由阿里云在创建时间 + TTL 强制释放实例，即使实例内所有清理机制失效也能兜底计费（防止实例泄漏）。最小值 30。                                                                                                                             | `240`                                    |
 | `arch`                               | 架构（`amd64` 或 `arm64`）                                                                                                                                                                                                                                                 | `amd64`                                  |

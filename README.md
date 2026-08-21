@@ -36,7 +36,7 @@ jobs:
     steps:
       - name: Setup Aliyun ECS Spot Runner
         id: setup-runner
-        uses: dianplus/cloud-instance-github-runner@master
+        uses: dianplus/cloud-instance-github-runner@v1.1.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -91,7 +91,7 @@ jobs:
     # permissions configuration is optional since this Action uses PAT instead of GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@master
+        uses: dianplus/cloud-instance-github-runner@v1.1.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -109,7 +109,7 @@ jobs:
     # permissions configuration is optional since this Action uses PAT instead of GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@master
+        uses: dianplus/cloud-instance-github-runner@v1.1.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -140,7 +140,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@master
+        uses: dianplus/cloud-instance-github-runner@v1.1.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -180,7 +180,7 @@ jobs:
 | `aliyun_key_pair_name`               | SSH Key Pair Name                                                                                                                                                                                                                                                                                                                                         | -                                        |
 | `aliyun_ecs_self_destruct_role_name` | Instance Self-Destruct Role Name                                                                                                                                                                                                                                                                                                                          | -                                        |
 | `runner_labels`                      | Runner labels (comma-separated)                                                                                                                                                                                                                                                                                                                           | `self-hosted,Linux,aliyun,spot-instance` |
-| `runner_version`                     | GitHub Actions Runner version                                                                                                                                                                                                                                                                                                                             | `2.311.0`                                |
+| `runner_version`                     | GitHub Actions Runner version                                                                                                                                                                                                                                                                                                                             | `2.330.0`                                |
 | `aliyun_instance_type`               | Specific instance type (e.g., `ecs.c7.2xlarge`). When provided, ignores `min_cpu`/`max_cpu`/`min_mem`/`max_mem`/`arch` and queries spot price for this exact type. Only single value allowed.                                                                                                                                                             | -                                        |
 | `instance_ttl_minutes`               | Hard lifetime cap in minutes. The instance is force-released by Aliyun at creation-time + TTL even if all in-instance cleanup mechanisms fail (billing backstop against leaked instances). Minimum 30.                                                                                                                                                    | `240`                                    |
 | `arch`                               | Architecture (`amd64` or `arm64`)                                                                                                                                                                                                                                                                                                                         | `amd64`                                  |
