@@ -5,10 +5,10 @@ Read base64-encoded User Data content from environment variable, decode and writ
 Avoid exposing sensitive information in GitHub Actions logs, and avoid escaping and parsing issues
 """
 
-import sys
-import os
 import base64
 import binascii
+import os
+import sys
 
 
 def main():

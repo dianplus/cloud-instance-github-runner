@@ -4,22 +4,23 @@ Create Aliyun ECS Spot instance
 Used to create Self-hosted Runner instance
 """
 
-import os
-import sys
-import subprocess
 import base64
 import json
+import os
 import re
-from typing import Optional, List, Tuple
+import subprocess
+import sys
+import time
+from typing import NoReturn
 
 
-def error_exit(message: str) -> None:
+def error_exit(message: str) -> NoReturn:
     """Print error message and exit"""
     print(f"Error: {message}", file=sys.stderr)
     sys.exit(1)
 
 
-def get_env_var(name: str, default: Optional[str] = None) -> str:
+def get_env_var(name: str, default: str | None = None) -> str:
     """Get environment variable"""
     value = os.environ.get(name, default)
     if value is None:
@@ -27,12 +28,10 @@ def get_env_var(name: str, default: Optional[str] = None) -> str:
     return value
 
 
-def read_user_data(
-    user_data_file: Optional[str] = None, user_data: Optional[str] = None
-) -> Optional[str]:
+def read_user_data(user_data_file: str | None = None, user_data: str | None = None) -> str | None:
     """Read User Data"""
     if user_data_file and os.path.isfile(user_data_file):
-        with open(user_data_file, "r", encoding="utf-8") as f:
+        with open(user_data_file, encoding="utf-8") as f:
             raw_data = f.read()
         # Normalize line endings (remove CRLF)
         user_data = raw_data.replace("\r\n", "\n").replace("\r", "\n")
@@ -73,7 +72,7 @@ def encode_user_data(user_data: str) -> str:
         error_exit(f"Failed to encode User Data to base64: {e}")
 
 
-def get_image_from_family(region_id: str, image_family: str) -> Optional[dict]:
+def get_image_from_family(region_id: str, image_family: str) -> dict | None:
     """Get latest image information from image family"""
     cmd = [
         "aliyun",
@@ -102,7 +101,7 @@ def get_image_from_family(region_id: str, image_family: str) -> Optional[dict]:
                 data = json.loads(result.stdout)
 
                 # Image information returned by DescribeImageFromFamily is in the Image field
-                if "Image" in data and data["Image"]:
+                if data.get("Image"):
                     image = data["Image"]
                     image_id = image.get("ImageId", "")
 
@@ -165,7 +164,7 @@ def get_image_id(region_id: str) -> str:
     return image_id
 
 
-def get_vswitch_id(zone_id: str) -> Optional[str]:
+def get_vswitch_id(zone_id: str) -> str | None:
     """Get VSwitch ID based on zone ID"""
     match = re.search(r"-([a-z])$", zone_id)
     if not match:
@@ -178,7 +177,7 @@ def get_vswitch_id(zone_id: str) -> Optional[str]:
 
 def parse_candidates_file(
     candidates_file: str,
-) -> List[Tuple[str, str, str, str, Optional[int]]]:
+) -> list[tuple[str, str, str, str, int | None]]:
     """Parse candidates file
     Format: INSTANCE_TYPE|ZONE_ID|VSWITCH_ID|SPOT_PRICE_LIMIT|CPU_CORES
     Returns: (instance_type, zone_id, vswitch_id, spot_price_limit, cpu_cores)
@@ -187,7 +186,7 @@ def parse_candidates_file(
     if not os.path.isfile(candidates_file):
         return candidates
 
-    with open(candidates_file, "r", encoding="utf-8") as f:
+    with open(candidates_file, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -206,10 +205,10 @@ def parse_candidates_file(
 
 
 def calculate_spot_price_limit(
-    price_per_core: Optional[float],
-    cpu_cores: Optional[int],
-    default_limit: Optional[str] = None,
-) -> Optional[str]:
+    price_per_core: float | None,
+    cpu_cores: int | None,
+    default_limit: str | None = None,
+) -> str | None:
     """Calculate Spot price limit"""
     if price_per_core and cpu_cores:
         total_price = price_per_core * cpu_cores
@@ -219,7 +218,7 @@ def calculate_spot_price_limit(
 
 
 def get_supported_disk_category(
-    region_id: str, instance_type: str, zone_id: Optional[str] = None
+    region_id: str, instance_type: str, zone_id: str | None = None
 ) -> str:
     """Get system disk category supported by instance type (fallback strategy)"""
     # Disk category priority: cloud_essd -> cloud_ssd -> cloud_efficiency
@@ -285,6 +284,37 @@ def get_supported_disk_category(
     return "cloud_essd"
 
 
+def load_ttl_minutes() -> int:
+    """Load INSTANCE_TTL_MINUTES, failing loudly on non-numeric values"""
+    raw = os.environ.get("INSTANCE_TTL_MINUTES", "240")
+    try:
+        return int(raw)
+    except ValueError:
+        error_exit(f"INSTANCE_TTL_MINUTES must be an integer number of minutes; got {raw!r}")
+
+
+def compute_auto_release_time(ttl_minutes: int, now_epoch: float) -> str:
+    """Compute the AutoReleaseTime timestamp (ISO8601 UTC) for cloud-side billing backstop.
+
+    Aliyun requires the auto-release time to be at least 30 minutes after
+    creation; a smaller TTL is a configuration error and fails loudly
+    (error_exit) instead of being silently clamped. The base minute is
+    rounded UP, so the seconds field is always 00 and the release time is
+    never earlier than now + ttl (the 30-minute minimum holds even at
+    ttl=30 when the current second is nonzero).
+    """
+    if ttl_minutes < 30:
+        error_exit(
+            f"INSTANCE_TTL_MINUTES must be at least 30 minutes (Aliyun AutoReleaseTime "
+            f"constraint); got {ttl_minutes}"
+        )
+    # Ceil the base minute: release time must never be earlier than
+    # now + ttl (the API minimum of 30 minutes must hold even at ttl=30
+    # when the current second is nonzero).
+    epoch = int(-(-now_epoch // 60)) * 60 + ttl_minutes * 60
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
 def create_instance(
     region_id: str,
     image_id: str,
@@ -292,13 +322,13 @@ def create_instance(
     security_group_id: str,
     vswitch_id: str,
     instance_name: str,
-    key_pair_name: Optional[str] = None,
-    ram_role_name: Optional[str] = None,
+    key_pair_name: str | None = None,
+    ram_role_name: str | None = None,
     spot_strategy: str = "SpotAsPriceGo",
-    spot_price_limit: Optional[str] = None,
-    user_data_b64: Optional[str] = None,
-    system_disk_category: Optional[str] = None,
-) -> Tuple[int, str]:
+    spot_price_limit: str | None = None,
+    user_data_b64: str | None = None,
+    system_disk_category: str | None = None,
+) -> tuple[int, str]:
     """Create ECS instance"""
     # If disk category is not specified, auto-detect
     if not system_disk_category:
@@ -330,6 +360,10 @@ def create_instance(
         "GITHUB_RUNNER_TYPE",
         "--Tag.1.Value",
         "aliyun-ecs-spot",
+        # Cloud-side billing backstop: even if every in-instance cleanup
+        # mechanism fails, Aliyun force-releases the instance at this time.
+        "--AutoReleaseTime",
+        compute_auto_release_time(load_ttl_minutes(), time.time()),
     ]
 
     if key_pair_name:
@@ -360,7 +394,7 @@ def create_instance(
         return 1, str(e)
 
 
-def extract_instance_id(response: str) -> Optional[str]:
+def extract_instance_id(response: str) -> str | None:
     """Extract instance ID from response"""
     try:
         data = json.loads(response)
@@ -440,6 +474,8 @@ def main():
     print(f"VSwitch ID: {vswitch_id}", file=sys.stderr)
     print(f"Security Group ID: {security_group_id}", file=sys.stderr)
     print(f"Image ID: {image_id}", file=sys.stderr)
+    auto_release_time = compute_auto_release_time(load_ttl_minutes(), time.time())
+    print(f"Auto Release Time: {auto_release_time}", file=sys.stderr)
     if key_pair_name:
         print(f"Key Pair Name: {key_pair_name}", file=sys.stderr)
     if spot_price_limit:
@@ -483,6 +519,7 @@ def main():
             # Create instance (supports disk category fallback)
             disk_categories = ["cloud_essd", "cloud_ssd", "cloud_efficiency"]
             instance_created = False
+            response: str | None = None
 
             for disk_category in disk_categories:
                 print(

@@ -4,14 +4,13 @@ Dynamic instance selection script
 Query for optimal spot instance types using spot-instance-advisor tool
 """
 
-import os
-import sys
 import json
-import subprocess
-import tempfile
+import os
 import re
+import subprocess
+import sys
+import tempfile
 import time
-from typing import List, Dict, Optional, Tuple
 
 
 def error_exit(message: str) -> None:
@@ -20,7 +19,7 @@ def error_exit(message: str) -> None:
     sys.exit(1)
 
 
-def get_env_var(name: str, default: Optional[str] = None) -> str:
+def get_env_var(name: str, default: str | None = None) -> str:
     """Get environment variable"""
     value = os.environ.get(name, default)
     if value is None:
@@ -28,7 +27,7 @@ def get_env_var(name: str, default: Optional[str] = None) -> str:
     return value
 
 
-def parse_cpu_from_instance_type(instance_type: str) -> Optional[int]:
+def parse_cpu_from_instance_type(instance_type: str) -> int | None:
     """Parse CPU cores from instance type name"""
     # Example: ecs.c7.2xlarge -> 8 cores (2xlarge = 2 * 4 = 8)
     match = re.search(r"\.(\d+)xlarge$", instance_type)
@@ -37,15 +36,13 @@ def parse_cpu_from_instance_type(instance_type: str) -> Optional[int]:
 
     if instance_type.endswith(".xlarge"):
         return 4
-    elif instance_type.endswith(".large"):
-        return 2
-    elif instance_type.endswith(".medium"):
+    elif instance_type.endswith((".large", ".medium")):
         return 2
 
     return None
 
 
-def get_field_value(obj: Dict, *keys: str) -> Optional[str]:
+def get_field_value(obj: dict, *keys: str) -> str | None:
     """Get field value from JSON object, supporting multiple field name formats"""
     for key in keys:
         if key in obj:
@@ -65,7 +62,7 @@ def query_spot_instances(
     max_mem: int,
     arch: str,
     exact_match: bool = False,
-) -> Optional[List[Dict]]:
+) -> list[dict] | None:
     """Query spot instances"""
     cmd = [
         advisor_binary,
@@ -106,7 +103,7 @@ def query_specific_instance_type(
     access_key_secret: str,
     region: str,
     instance_type: str,
-) -> Optional[List[Dict]]:
+) -> list[dict] | None:
     """Query spot price for a specific instance type using --instanceType parameter (v1.0.2+)"""
     cmd = [
         advisor_binary,
@@ -141,12 +138,12 @@ def query_specific_instance_type(
 
 
 def filter_instances(
-    instances: List[Dict],
+    instances: list[dict],
     min_cpu: int,
     min_mem: int,
     arch: str,
     max_candidates: int = 5,
-) -> List[Tuple[str, str, float, int]]:
+) -> list[tuple[str, str, float, int]]:
     """Filter instances, keeping only those meeting minimum requirements"""
     candidates = []
 
@@ -222,7 +219,7 @@ def filter_instances(
     return candidates
 
 
-def get_vswitch_id(zone_id: str) -> Optional[str]:
+def get_vswitch_id(zone_id: str) -> str | None:
     """Get VSwitch ID based on zone ID"""
     # Extract suffix from zone ID (e.g., cn-hangzhou-k -> K)
     match = re.search(r"-([a-z])$", zone_id)
@@ -235,10 +232,10 @@ def get_vswitch_id(zone_id: str) -> Optional[str]:
 
 
 def filter_instances_for_specific_type(
-    instances: List[Dict],
+    instances: list[dict],
     target_instance_type: str,
     max_candidates: int = 10,
-) -> List[Tuple[str, str, float, int]]:
+) -> list[tuple[str, str, float, int]]:
     """Filter instances for a specific instance type (no CPU/memory validation)"""
     candidates = []
 
@@ -423,11 +420,10 @@ def main():
 
         # Try each query strategy until results are found
         json_result = None
-        query_attempt = 0
 
-        for strat_cpu, strat_mem, exact_match, desc in query_strategies:
-            query_attempt += 1
-
+        for query_attempt, (strat_cpu, strat_mem, exact_match, desc) in enumerate(
+            query_strategies, 1
+        ):
             if exact_match:
                 print(
                     f"Attempt {query_attempt}: Exact match ({strat_cpu}c{strat_mem}g, {desc})",
@@ -513,27 +509,26 @@ def main():
     # Create candidates file
     # Format: INSTANCE_TYPE|ZONE_ID|VSWITCH_ID|SPOT_PRICE_LIMIT|CPU_CORES
     # Contains all information needed for subsequent steps, avoiding duplicate calculations and mappings
-    candidates_file = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt")
-    for (
-        cand_instance_type,
-        cand_zone_id,
-        cand_price_per_core,
-        cand_cpu_cores,
-    ) in candidates:
-        # Calculate VSwitch ID and Spot Price Limit for each candidate
-        cand_vswitch_id = get_vswitch_id(cand_zone_id)
-        if not cand_vswitch_id:
-            # Skip candidates without VSwitch ID (will be skipped in subsequent steps)
-            continue
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as candidates_file:
+        for (
+            cand_instance_type,
+            cand_zone_id,
+            cand_price_per_core,
+            cand_cpu_cores,
+        ) in candidates:
+            # Calculate VSwitch ID and Spot Price Limit for each candidate
+            cand_vswitch_id = get_vswitch_id(cand_zone_id)
+            if not cand_vswitch_id:
+                # Skip candidates without VSwitch ID (will be skipped in subsequent steps)
+                continue
 
-        # Calculate Spot Price Limit
-        cand_total_price = cand_price_per_core * cand_cpu_cores
-        cand_spot_price_limit = cand_total_price * 1.2
+            # Calculate Spot Price Limit
+            cand_total_price = cand_price_per_core * cand_cpu_cores
+            cand_spot_price_limit = cand_total_price * 1.2
 
-        candidates_file.write(
-            f"{cand_instance_type}|{cand_zone_id}|{cand_vswitch_id}|{cand_spot_price_limit:.4f}|{cand_cpu_cores}\n"
-        )
-    candidates_file.close()
+            candidates_file.write(
+                f"{cand_instance_type}|{cand_zone_id}|{cand_vswitch_id}|{cand_spot_price_limit:.4f}|{cand_cpu_cores}\n"
+            )
 
     # Output results (for GitHub Actions to capture)
     print(f"INSTANCE_TYPE={instance_type}")
