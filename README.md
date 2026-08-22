@@ -36,7 +36,7 @@ jobs:
     steps:
       - name: Setup Aliyun ECS Spot Runner
         id: setup-runner
-        uses: dianplus/cloud-instance-github-runner@v1.2.1
+        uses: dianplus/cloud-instance-github-runner@v1.3.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -91,7 +91,7 @@ jobs:
     # permissions configuration is optional since this Action uses PAT instead of GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@v1.2.1
+        uses: dianplus/cloud-instance-github-runner@v1.3.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -109,7 +109,7 @@ jobs:
     # permissions configuration is optional since this Action uses PAT instead of GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@v1.2.1
+        uses: dianplus/cloud-instance-github-runner@v1.3.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -140,7 +140,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@v1.2.1
+        uses: dianplus/cloud-instance-github-runner@v1.3.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
