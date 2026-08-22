@@ -28,7 +28,7 @@ on:
         options: [amd64, arm64]
         default: amd64
       failure_path:
-        description: "Also run the failure-path leg (dead proxy -> bootstrap failure -> instance must be destroyed without waiting for the TTL backstop). Default true — scheduled runs cannot pass inputs and should verify full coverage."
+        description: "Also run the failure-path leg (blackhole proxy -> bootstrap failure -> instance must be destroyed without waiting for the TTL backstop). Default true — scheduled runs cannot pass inputs and should verify full coverage."
         type: boolean
         default: true
   schedule:
@@ -153,19 +153,24 @@ jobs:
           exit 1
 
   failure-path:
-    name: Failure path - dead proxy must still end in destruction
+    name: Failure path - blackhole proxy must still end in destruction
     if: inputs.failure_path
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      # A dead proxy reproduces the original incident: instance is created,
-      # user-data survives the aliyun/CLI installs (NO_PROXY covers aliyun
-      # domains + metadata), then dies at the GitHub runner download or
-      # registration. The EXIT trap / watchdog / action cleanup must destroy
-      # the instance without waiting for the 240 min TTL backstop.
-      - name: Setup with dead proxy (expected to fail)
+      # A blackhole (non-routable) proxy reproduces the original incident
+      # while keeping the instance ALIVE at cleanup time: user-data survives
+      # the aliyun/CLI installs (NO_PROXY covers aliyun domains + metadata),
+      # then HANGS on the GitHub runner download (curl waits out its connect
+      # timeout instead of failing instantly like a refused proxy would —
+      # the earlier 127.0.0.1:9 variant let the EXIT trap destroy the
+      # instance before wait-runner even timed out, leaving the forensics
+      # fetch nothing to capture). When wait-runner gives up, the console
+      # log must be captured from the LIVE instance, then the loud cleanup
+      # must delete it — still far below the 240 min TTL backstop.
+      - name: Setup with blackhole proxy (expected to fail)
         id: setup-runner
         uses: ./
         continue-on-error: true
@@ -185,16 +190,16 @@ jobs:
           vswitch_id_i: ${{ vars.ALIYUN_VSWITCH_ID_I }}
           vswitch_id_j: ${{ vars.ALIYUN_VSWITCH_ID_J }}
           vswitch_id_k: ${{ vars.ALIYUN_VSWITCH_ID_K }}
-          http_proxy: http://127.0.0.1:9
-          https_proxy: http://127.0.0.1:9
+          http_proxy: http://10.255.255.1:9
+          https_proxy: http://10.255.255.1:9
 
       - name: The action must have failed loudly
         run: |
           if [[ "${{ steps.setup-runner.outcome }}" != "failure" ]]; then
-            echo "ERROR: setup was expected to fail (dead proxy) but outcome=${{ steps.setup-runner.outcome }}" >&2
+            echo "ERROR: setup was expected to fail (blackhole proxy) but outcome=${{ steps.setup-runner.outcome }}" >&2
             exit 1
           fi
-          echo "Setup failed as expected (dead proxy)"
+          echo "Setup failed as expected (blackhole proxy)"
 
       - name: Install Aliyun CLI
         uses: Liar0320/aliyun-cli-action@v1.0.2
