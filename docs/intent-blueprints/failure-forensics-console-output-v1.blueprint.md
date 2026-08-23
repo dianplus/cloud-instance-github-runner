@@ -1,9 +1,11 @@
 ---
-blueprint_version: v1
-frozen_at: 2026-08-21
+blueprint_version: v2
+frozen_at: 2026-08-22
 task: failure-forensics-console-output
 status: frozen
 ---
+
+> 修订记录 v1→v2（2026-08-22，经用户授权）：外环评审 Warning-1 挂账项——v1 的 AC-1 冻结了裸调用形状，但无界 CLI 调用（Go SDK 默认重试 + 长超时）在网络分区下可耗尽取消宽限窗口，把清理挤出到 TTL 兜底（最坏 240min）。v2 增补 AC-6：调用必须经 CLI 原生旗标加界（`--connect-timeout`/`--read-timeout`/`--retry-count`，已对 aliyun CLI 3.2.2 一手验证可用于 API 调用级）。其余条款不变。
 
 # Intent Blueprint: 失败取证——销毁前抢救实例控制台日志
 
@@ -26,6 +28,7 @@ wait-runner 超时/创建失败后清理步骤会销毁实例，实例内 user-d
 - AC-3: action.yml Cleanup on Failure 步骤内，fetch-console-output.sh 的调用必须位于 cleanup-instance.sh 之前（console 输出仅存活至删除前）。
 - AC-4: action.yml 新增 console 日志 artifact 上传步骤：`uses: actions/upload-artifact@v4`，`if: failure() || cancelled()`，`with.path` 指向 CONSOLE_LOG_FILE 同路径，`if-no-files-found: ignore`（成功路径与取证失败均不得产生空 artifact 报错），name 含 instance id 可辨识。
 - AC-5: tests conftest 的 aliyun stub 扩展 `GetInstanceConsoleOutput` 子命令：`console_b64` marker 文件内容为 base64 载荷（脚本解码后应等于明文）；默认无 marker 时该子命令 rc=1 stderr 模拟错误。由 AC-1 测试复用，无独立测试（如实标注）。
+- AC-6（v2 增补）: `GetInstanceConsoleOutput` 调用必须携带 CLI 原生加界旗标：`--connect-timeout`（默认 10 秒）、`--read-timeout`（默认 30 秒）、`--retry-count`（默认 0，禁用传输层重试放大）；三者均可经环境变量覆盖（`CONSOLE_FETCH_CONNECT_TIMEOUT`/`CONSOLE_FETCH_READ_TIMEOUT`/`CONSOLE_FETCH_RETRY_COUNT`，`${VAR:-default}` 形式）。最坏阻塞 ≈ 连接 10s + 读 30s ≈ 40s，远小于取消宽限窗口。
 
 ## Non-Functional Requirements
 
@@ -45,3 +48,4 @@ wait-runner 超时/创建失败后清理步骤会销毁实例，实例内 user-d
 - AC-1 → tests/test_fetch_console_output.py::test_fetch_decodes_console_output_to_file
 - AC-1/AC-2 → tests/test_fetch_console_output.py::test_fetch_forensic_failures_never_block_cleanup
 - AC-3/AC-4 → tests/test_action_workflow.py::test_cleanup_captures_console_output_before_deletion
+- AC-6 → tests/test_fetch_console_output.py::test_fetch_call_is_bounded

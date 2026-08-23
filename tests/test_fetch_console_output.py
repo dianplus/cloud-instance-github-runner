@@ -158,3 +158,28 @@ def test_fetch_forensic_failures_never_block_cleanup(
         "AC-2: fetch-console-output.sh must never exit non-zero -- no "
         "'command -v aliyun' hard-fail preflight, no 'exit 1' on any path"
     )
+
+
+def test_fetch_call_is_bounded():
+    # AC-6 (blueprint v2): the GetInstanceConsoleOutput call must carry CLI
+    # native bound flags -- an unbounded call (SDK default retries + long
+    # timeouts) could eat the cancellation grace window and push deletion to
+    # the TTL backstop.
+    script_text = FETCH_SCRIPT.read_text(encoding="utf-8")
+    for flag, knob, default in (
+        ("--connect-timeout", "CONSOLE_FETCH_CONNECT_TIMEOUT", "10"),
+        ("--read-timeout", "CONSOLE_FETCH_READ_TIMEOUT", "30"),
+        ("--retry-count", "CONSOLE_FETCH_RETRY_COUNT", "0"),
+    ):
+        # The script declares each knob as its own `${KNOB:-default}` line and
+        # references the variable at the call site -- assert both halves.
+        default_decl = re.escape(f"${{{knob}:-{default}}}")
+        call_site = re.escape(f'{flag} "${{{knob}}}"')
+        assert re.search(default_decl, script_text), (
+            f"AC-6: {knob} must default to {default} via "
+            f"${{{knob}:-{default}}} (env-overridable); script:\n{script_text}"
+        )
+        assert re.search(call_site, script_text), (
+            f'AC-6: the fetch call must pass {flag} "${{{knob}}}" '
+            f"(bounded call site); script:\n{script_text}"
+        )

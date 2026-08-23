@@ -60,9 +60,21 @@ fi
 # warning path as any API error. (This is the reverse of
 # cleanup-instance.sh's hard-fail preflight -- a deliberate difference: a
 # missing CLI here only costs the log, not billing safety.)
+# Bounded call (blueprint AC-6): the CLI's transport layer retries with long
+# timeouts by default; under network partitions that could eat the whole
+# cancellation grace window and push instance deletion out to the 240-min TTL
+# backstop. Cap it: connect 10s + read 30s, retries disabled (~40s worst case).
+# All three knobs are env-overridable.
+CONSOLE_FETCH_CONNECT_TIMEOUT="${CONSOLE_FETCH_CONNECT_TIMEOUT:-10}"
+CONSOLE_FETCH_READ_TIMEOUT="${CONSOLE_FETCH_READ_TIMEOUT:-30}"
+CONSOLE_FETCH_RETRY_COUNT="${CONSOLE_FETCH_RETRY_COUNT:-0}"
+
 if ! API_JSON="$(aliyun ecs GetInstanceConsoleOutput \
     --RegionId "${ALIYUN_REGION_ID}" \
-    --InstanceId "${INSTANCE_ID}" 2>"${ERROR_FILE}")"; then
+    --InstanceId "${INSTANCE_ID}" \
+    --connect-timeout "${CONSOLE_FETCH_CONNECT_TIMEOUT}" \
+    --read-timeout "${CONSOLE_FETCH_READ_TIMEOUT}" \
+    --retry-count "${CONSOLE_FETCH_RETRY_COUNT}" 2>"${ERROR_FILE}")"; then
   echo "Warning: GetInstanceConsoleOutput failed for ${INSTANCE_ID}: $(tr '\n' ' ' < "${ERROR_FILE}") (forensics is best-effort; cleanup continues)" >&2
   rm -f "${ERROR_FILE}"
   exit 0
