@@ -36,7 +36,7 @@ jobs:
     steps:
       - name: Setup Aliyun ECS Spot Runner
         id: setup-runner
-        uses: dianplus/cloud-instance-github-runner@v1.3.0
+        uses: dianplus/cloud-instance-github-runner@v1.4.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -91,7 +91,7 @@ jobs:
     # permissions 配置是可选的，因为本 Action 使用 PAT 而非 GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@v1.3.0
+        uses: dianplus/cloud-instance-github-runner@v1.4.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -109,7 +109,7 @@ jobs:
     # permissions 配置是可选的，因为本 Action 使用 PAT 而非 GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@v1.3.0
+        uses: dianplus/cloud-instance-github-runner@v1.4.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -140,7 +140,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@v1.3.0
+        uses: dianplus/cloud-instance-github-runner@v1.4.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -184,6 +184,8 @@ jobs:
 | `runner_wait_timeout`                | 可选——无需显式设置。等待 runner 上线的总秒数（轮询间隔 10s；该值为总窗口而非单次超时；实例创建的 candidates/磁盘类别重试不受此参数影响）。默认 120 保持历史行为；仅当冷启动缓慢（如经代理下载 runner 需 3-6 分钟）时按需调大。                                             | `120`                                    |
 | `aliyun_instance_type`               | 指定实例规格（如 `ecs.c7.2xlarge`）。提供此参数时，将忽略 `min_cpu`/`max_cpu`/`min_mem`/`max_mem`/`arch` 参数，并查询该精确规格的 spot 价格。仅允许单个值。                                                                                                                | -                                        |
 | `instance_ttl_minutes`               | 实例硬性生命周期上限（分钟）。到期后由阿里云在创建时间 + TTL 强制释放实例，即使实例内所有清理机制失效也能兜底计费（防止实例泄漏）。最小值 30。                                                                                                                             | `240`                                    |
+| `spot_price_multiplier`              | 作用于 spot 市场价的出价倍率，用于计算 SpotPriceLimit（最高小时出价）。默认 1.2（20% 余量）。必须为正有限数。                                                                                                                                                              | `1.2`                                    |
+| `spot_duration`                      | Spot 保护期（小时）：1 = 创建后 1 小时内保证不被系统回收（阿里云 API 默认）；0 = 无保护期，随时可被回收。仅接受 0 或 1。无论取值如何均按秒计费。                                                                                                                           | `1`                                      |
 | `arch`                               | 架构（`amd64` 或 `arm64`）                                                                                                                                                                                                                                                 | `amd64`                                  |
 | `min_cpu`                            | 最小 CPU 核心数                                                                                                                                                                                                                                                            | `8`                                      |
 | `min_mem`                            | 最小内存 GB（会根据架构自动计算）                                                                                                                                                                                                                                          | -                                        |
@@ -407,6 +409,8 @@ aliyun ram AttachPolicyToRole \
 3. 实例启动时自动安装配置 GitHub Actions Runner
 4. 等待 Runner 注册上线
 5. 任务完成后自动删除实例
+
+Spot 出价可通过 `spot_price_multiplier` 调节（出价 = 市场价 × 倍率），系统回收保护窗口可通过 `spot_duration` 配置（无论保护期如何选择，spot 实例均按秒计费）。
 
 ## 故障排查
 

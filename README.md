@@ -36,7 +36,7 @@ jobs:
     steps:
       - name: Setup Aliyun ECS Spot Runner
         id: setup-runner
-        uses: dianplus/cloud-instance-github-runner@v1.3.0
+        uses: dianplus/cloud-instance-github-runner@v1.4.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -91,7 +91,7 @@ jobs:
     # permissions configuration is optional since this Action uses PAT instead of GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@v1.3.0
+        uses: dianplus/cloud-instance-github-runner@v1.4.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -109,7 +109,7 @@ jobs:
     # permissions configuration is optional since this Action uses PAT instead of GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@v1.3.0
+        uses: dianplus/cloud-instance-github-runner@v1.4.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -140,7 +140,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@v1.3.0
+        uses: dianplus/cloud-instance-github-runner@v1.4.0
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -184,6 +184,8 @@ jobs:
 | `runner_wait_timeout`                | Optional — no need to set explicitly. Total seconds the action waits for the runner to come online (poll interval 10s; this is the TOTAL window, not a per-attempt timeout; instance-creation retries via candidates/disk-category are governed separately and unaffected). Default 120 preserves historical behavior; raise it only when cold bootstrap is slow, e.g. runner download through a proxy takes 3-6 minutes. | `120`                                    |
 | `aliyun_instance_type`               | Specific instance type (e.g., `ecs.c7.2xlarge`). When provided, ignores `min_cpu`/`max_cpu`/`min_mem`/`max_mem`/`arch` and queries spot price for this exact type. Only single value allowed.                                                                                                                                                                                                                             | -                                        |
 | `instance_ttl_minutes`               | Hard lifetime cap in minutes. The instance is force-released by Aliyun at creation-time + TTL even if all in-instance cleanup mechanisms fail (billing backstop against leaked instances). Minimum 30.                                                                                                                                                                                                                    | `240`                                    |
+| `spot_price_multiplier`              | Multiplier applied to the spot market price to compute SpotPriceLimit (max hourly bid). Default 1.2 (20% headroom). Positive finite number.                                                                                                                                                                                                                                                                               | `1.2`                                    |
+| `spot_duration`                      | Spot protection period in hours: 1 = no system reclamation in the first hour (Aliyun API default); 0 = no protection, reclaimable anytime. Only 0 or 1. Billed by second regardless.                                                                                                                                                                                                                                      | `1`                                      |
 | `arch`                               | Architecture (`amd64` or `arm64`)                                                                                                                                                                                                                                                                                                                                                                                         | `amd64`                                  |
 | `min_cpu`                            | Minimum CPU cores                                                                                                                                                                                                                                                                                                                                                                                                         | `8`                                      |
 | `min_mem`                            | Minimum memory in GB (auto-calculated if not provided)                                                                                                                                                                                                                                                                                                                                                                    | -                                        |
@@ -407,6 +409,8 @@ If you also want to create custom images to shorten CI time, you need the follow
 3. Instance automatically installs and configures GitHub Actions Runner on startup
 4. Wait for Runner to register and come online
 5. Automatically delete instance after task completion
+
+Spot bidding is tunable via `spot_price_multiplier` (bid = market price × multiplier), and the system-reclamation protection window via `spot_duration` (spot instances are billed by second regardless of the protection period).
 
 ## Troubleshooting
 
