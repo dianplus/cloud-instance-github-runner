@@ -1,10 +1,13 @@
 ---
-blueprint_version: v1
+blueprint_version: v1.1
 frozen_at: 2026-09-03
+revised_at: 2026-09-03
 task: spot 出价倍率与保护期参数化
 status: frozen
 convergence: substantive_converged (csr 4 rounds, 同源+异源; record at workspace/cross-source-review/runs/20260903-133443-spot-bid-params/convergence-record.json)
 ---
+
+> 修订记录 v1→v1.1（2026-09-03，经用户生产实证授权）：C6 收窄。文档三源（中文官方 API 文档、英文官方 API 文档、CLI 元数据）一致称 SpotDuration 默认值 1，但本项目用户生产实证：未传该参数时实例频繁在 <1h 即因出价被平台回收——隐式默认在生产上未兑现保护期。故 AC-4 的显式 `--SpotDuration 1` 应视为**潜在行为修复**（强制启用文档承诺的保护），而非纯显式化；"默认 '1' 零语义变更"收窄为"文档语义等价，生产行为以 Rollout A/B 实证为准"。成因（RunInstances 路径未应用默认值 / 地域或时段差异 / 文档与实现不符）未能从可获取来源裁决，如实挂账。
 
 # Intent Blueprint: Spot 出价倍率（price multiplier）与保护期（SpotDuration）参数化
 
@@ -41,7 +44,7 @@ convergence: substantive_converged (csr 4 rounds, 同源+异源; record at works
 - C3【S1/S2a/S6】`SpotDuration` 单位为**小时**，仅接受 `0` 或 `1`，默认 `1`（现行 S1+S2a；历史 0~6 小时见 S6）。
 - C4【S1】Spot 实例**按秒计费**；保护期内提前释放不按 1 小时整收（"Spot instances are billed by second"）。
 - C5【S3，收窄】本机 aliyun CLI 3.4.11 实证：CLI 不在本地校验元数据外参数；参数是否透传至服务端未实证，action 固定的 CLI 3.2.2 兼容性待灰度验证（见 Rollout）。
-- C6【S1 推论】当前仓库未传 SpotDuration，按 API 默认已带 1 小时保护 → 新参数默认 `"1"` 显式化，不改变现状行为。
+- C6【S1+S2a，v1.1 收窄】现行 API 文档（zh/en/CLI 元数据三源一致）称未传 SpotDuration 时默认 1（1 小时保护）；但本项目用户生产实证：未传参时实例频繁 <1h 被出价回收——隐式默认在生产上未兑现保护。新参数默认 `"1"` 显式传递，应视为对观察问题的修复而非零行为变更；文档等价性与生产行为的差异成因未决，Rollout 含 A/B 验证项。
 - C7【S1+S1b】保护期防的是**系统回收**（出价/库存比对）；用户侧释放路径（cleanup / AutoReleaseTime / 自毁）不受影响。S1 原句覆盖系统回收语义；S1b 证明 AutoReleaseTime 对 spot 实例可用（最短 30min）；"TTL<60min 时 AutoReleaseTime 在保护窗口内照常触发"为基于 S1b+仓库生产实况的推论，Rollout 含对应 spot-check。
 
 ## Core Use Cases
@@ -116,4 +119,5 @@ Coverage Notes：AC-7（README/CHANGELOG 文档同步）无自动化测试，人
 - 默认参数组合的**语义**行为与现状一致（出价策略 = 1.2×市价；保护期 = 1h）；字节级差异以 AC-8 (a)(b) 枚举为准（限价 3 位小数、命令新增 --SpotDuration 1）。回归测试断言语义同一（loader 默认值 + argv 旗标集合语义），不做字节相等断言。
 - 灰度（定义：在可传入非默认 action 输入的调用方 workflow 触发一次真实创建——本仓库 `.github/workflows/smoke-test.yml` 加输入或一次性测试仓库均可）：跑 `spot_duration: 0` + `spot_price_multiplier: 1.5`，核对 banner `Spot Duration: ...` 与实例侧 SpotDuration 生效值（经 DescribeInstances/DescribeInstanceAttribute 核对，具体响应字段以实测为准——smoke-test.yml 已有 DescribeInstances 使用先例）（**闭环 C5**：验证 CLI 3.2.2 确实透传 `--SpotDuration` 并被服务端接受）；一次 <1h 任务提前释放后核对账单按秒计（C4 spot-check）。
 - 另跑一次 SpotAsPriceGo 路径（无价格限价场景）+ `spot_duration: 1`：确认 SpotAsPriceGo 下 --SpotDuration 亦被服务端接受（闭环策略无关性证据链）。
+- A/B 验证隐式默认行为（**v1.1 新增，闭环 C6 差异成因**）：同区域同规格分别以 v1.3.0（不传 SpotDuration）与 v1.4.0（显式 `--SpotDuration 1`）各创建若干实例，在市价波动窗口对比 <1h 出价中断率；并经 DescribeInstances/DescribeInstanceAttribute 核对 v1.4.0 实例保护生效。若 v1.3.0 对照组同样无中断，则差异成因更可能为时段/地域性，记录归档。
 - 另跑一次 `instance_ttl_minutes: 45` + `spot_duration: 1`：核对 AutoReleaseTime 在 1 小时保护窗口内到点照常释放（**闭环 C7 残余推论**）。

@@ -18,12 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added `spot_price_multiplier` action input: multiplier applied to the spot market price to compute `SpotPriceLimit` (default `1.2`, preserving existing bid behavior)
-- Added `spot_duration` action input: spot protection period in hours, only `0` or `1` (default `1`, equal to the Aliyun API default; spot instances are billed by second regardless of this setting)
+- Added `spot_duration` action input: spot protection period in hours, only `0` or `1` (default `1`; spot instances are billed by second regardless of this setting). Although the documented API default is also `1`, users observed frequent sub-hour price-based reclamation before this change — the explicit `--SpotDuration 1` now enforces the 1-hour protection instead of relying on the implicit default
 
 ### Changed
 
 - Formatted `SpotPriceLimit` values to three decimal places in all code paths, aligning with the Aliyun RunInstances API constraint (at most 3 decimal places)
-- Passed `--SpotDuration` explicitly to RunInstances (default `1` equals the API default, no semantic change)
+- Passed `--SpotDuration` explicitly to RunInstances (default `1`; the documented API default is treated as unreliable in practice — see the `spot_duration` note above)
 
 ### Removed
 
