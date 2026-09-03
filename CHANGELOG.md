@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [1.5.0] - 2026-09-03
+
+### Added
+
 - Added `spot_strategy` action input: explicit bidding strategy selection — `SpotAsPriceGo` (follow market price automatically; the multiplier and computed price limit do not affect bidding, no `--SpotPriceLimit` is sent; inputs are still fully validated) takes priority over `spot_price_multiplier`; default `SpotWithPriceLimit` preserves existing behavior. Explicit `SpotWithPriceLimit` with no limit available now fails loudly instead of silently switching.
 
 ### Changed
