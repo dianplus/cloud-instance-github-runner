@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Added `spot_price_multiplier` action input: multiplier applied to the spot market price to compute `SpotPriceLimit` (default `1.2`, preserving existing bid behavior)
+- Added `spot_duration` action input: spot protection period in hours, only `0` or `1` (default `1`, equal to the Aliyun API default; spot instances are billed by second regardless of this setting)
+
+### Changed
+
+- Formatted `SpotPriceLimit` values to three decimal places in all code paths, aligning with the Aliyun RunInstances API constraint (at most 3 decimal places)
+- Passed `--SpotDuration` explicitly to RunInstances (default `1` equals the API default, no semantic change)
+
+### Removed
+
+- Removed unused dead code `calculate_spot_price_limit()` from `scripts/create_spot_instance.py`
+
 ## [1.0.2] - 2025-12-17
 
 ### Added

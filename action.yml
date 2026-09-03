@@ -80,6 +80,14 @@ inputs:
     description: "Hard lifetime cap in minutes. The instance is force-released by Aliyun at creation-time + TTL (billing backstop). Minimum 30."
     required: false
     default: "240"
+  spot_price_multiplier:
+    description: "Multiplier applied to the spot market price to compute SpotPriceLimit (max hourly bid). 1.2 = 20% headroom over the advisor-queried market price. Must be a positive finite number."
+    required: false
+    default: "1.2"
+  spot_duration:
+    description: "Spot protection period in hours: 1 = Alibaba Cloud guarantees no system reclamation within the first hour (API default); 0 = no protection, reclaimable anytime. Only 0 or 1. Spot instances are billed by second regardless of this setting."
+    required: false
+    default: "1"
 
   # Proxy configuration
   http_proxy:
@@ -258,6 +266,7 @@ runs:
         MAX_CPU: ${{ inputs.max_cpu }}
         MIN_MEM: ${{ inputs.min_mem }}
         MAX_MEM: ${{ inputs.max_mem }}
+        SPOT_PRICE_MULTIPLIER: ${{ inputs.spot_price_multiplier }}
         ALIYUN_VSWITCH_ID_A: ${{ inputs.vswitch_id_a }}
         ALIYUN_VSWITCH_ID_B: ${{ inputs.vswitch_id_b }}
         ALIYUN_VSWITCH_ID_C: ${{ inputs.vswitch_id_c }}
@@ -341,6 +350,7 @@ runs:
         INSTANCE_TYPE: ${{ steps.select-instance.outputs.INSTANCE_TYPE }}
         INSTANCE_NAME: ${{ steps.runner-name.outputs.name }}
         INSTANCE_TTL_MINUTES: ${{ inputs.instance_ttl_minutes }}
+        SPOT_DURATION: ${{ inputs.spot_duration }}
         ARCH: ${{ inputs.arch }}
         SPOT_PRICE_LIMIT: ${{ steps.select-instance.outputs.SPOT_PRICE_LIMIT }}
         CANDIDATES_FILE: ${{ steps.select-instance.outputs.CANDIDATES_FILE }}

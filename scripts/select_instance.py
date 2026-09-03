@@ -5,6 +5,7 @@ Query for optimal spot instance types using spot-instance-advisor tool
 """
 
 import json
+import math
 import os
 import re
 import subprocess
@@ -12,6 +13,11 @@ import sys
 import tempfile
 import time
 from typing import NoReturn
+
+# SpotPriceLimit accepts at most 3 decimal places (API constraint), so limits
+# are formatted with :.3f. A computed limit below this floor would format to
+# "0.000" and must fail loudly instead of ever sending a zero bid.
+SPOT_PRICE_LIMIT_FLOOR = 0.0005
 
 
 def error_exit(message: str) -> NoReturn:
@@ -26,6 +32,49 @@ def get_env_var(name: str, default: str | None = None) -> str:
     if value is None:
         error_exit(f"{name} is required")
     return value
+
+
+def load_price_multiplier() -> float:
+    """Load the spot bid price multiplier from SPOT_PRICE_MULTIPLIER.
+
+    Unset or blank falls back to 1.2 (current bid behavior). Non-numeric,
+    <= 0, or non-finite (nan/inf) values fail loudly. A multiplier in (0, 1)
+    is a legal but riskier bid: warn on stderr and still return it.
+    """
+    raw_value = os.environ.get("SPOT_PRICE_MULTIPLIER", "").strip()
+    if not raw_value:
+        return 1.2
+
+    try:
+        multiplier = float(raw_value)
+    except ValueError:
+        error_exit(f"SPOT_PRICE_MULTIPLIER must be a valid number, got: {raw_value}")
+
+    if not math.isfinite(multiplier):
+        error_exit(f"SPOT_PRICE_MULTIPLIER must be a finite number, got: {raw_value}")
+
+    if multiplier <= 0:
+        error_exit(f"SPOT_PRICE_MULTIPLIER must be greater than 0, got: {multiplier}")
+
+    if multiplier < 1:
+        print(
+            "Warning: SPOT_PRICE_MULTIPLIER is below 1.0 "
+            f"(got {multiplier}); the bid may be lower than the market price, "
+            "which can make instance creation fail or be revoked sooner",
+            file=sys.stderr,
+        )
+
+    return multiplier
+
+
+def check_spot_price_limit_floor(price_limit: float, instance_type: str, zone_id: str) -> None:
+    """Fail loudly if a computed spot price limit would format to "0.000"."""
+    if price_limit < SPOT_PRICE_LIMIT_FLOOR:
+        error_exit(
+            f"Spot price limit for {instance_type} ({zone_id}) is too low: {price_limit}. "
+            f"Anything below {SPOT_PRICE_LIMIT_FLOOR} formats to '0.000' at 3 decimals; "
+            "refusing to emit a zero price limit (spot price data looks abnormal)"
+        )
 
 
 def parse_cpu_from_instance_type(instance_type: str) -> int | None:
@@ -288,13 +337,14 @@ def filter_instances_for_specific_type(
     return candidates
 
 
-def main():
+def main() -> None:
     """Main function"""
     # Get common parameters from environment variables
     access_key_id = get_env_var("ALIYUN_ACCESS_KEY_ID")
     access_key_secret = get_env_var("ALIYUN_ACCESS_KEY_SECRET")
     region_id = get_env_var("ALIYUN_REGION_ID")
     advisor_binary = os.environ.get("SPOT_ADVISOR_BINARY", "./spot-instance-advisor")
+    price_multiplier = load_price_multiplier()
 
     # Check if spot-instance-advisor tool exists
     if not os.path.isfile(advisor_binary):
@@ -501,7 +551,9 @@ def main():
             break
 
     # If no candidates have VSwitch ID, error
-    if not instance_type:
+    # (`or not zone_id` is logically redundant — both are assigned together in
+    # the loop — but it lets type checkers narrow zone_id for the floor check.)
+    if not instance_type or not zone_id:
         error_exit(
             "No instances found with VSwitch ID configured. "
             "Please ensure VSwitch IDs are configured for at least one zone."
@@ -511,37 +563,45 @@ def main():
     if price_per_core is None or cpu_cores is None:
         error_exit("Internal error: selected candidate is missing price or CPU core data")
     total_price = price_per_core * cpu_cores
-    spot_price_limit = total_price * 1.2
+    spot_price_limit = total_price * price_multiplier
+    check_spot_price_limit_floor(spot_price_limit, instance_type, zone_id)
 
-    # Create candidates file
+    # Prepare all candidate rows and validate every price limit up front, so
+    # a sub-floor limit fails loudly before the file is created (never leave a
+    # half-written candidates file behind).
     # Format: INSTANCE_TYPE|ZONE_ID|VSWITCH_ID|SPOT_PRICE_LIMIT|CPU_CORES
     # Contains all information needed for subsequent steps, avoiding duplicate calculations and mappings
+    candidate_rows: list[str] = []
+    for (
+        cand_instance_type,
+        cand_zone_id,
+        cand_price_per_core,
+        cand_cpu_cores,
+    ) in candidates:
+        # Calculate VSwitch ID and Spot Price Limit for each candidate
+        cand_vswitch_id = get_vswitch_id(cand_zone_id)
+        if not cand_vswitch_id:
+            # Skip candidates without VSwitch ID (will be skipped in subsequent steps)
+            continue
+
+        # Calculate Spot Price Limit
+        cand_total_price = cand_price_per_core * cand_cpu_cores
+        cand_spot_price_limit = cand_total_price * price_multiplier
+        check_spot_price_limit_floor(cand_spot_price_limit, cand_instance_type, cand_zone_id)
+
+        candidate_rows.append(
+            f"{cand_instance_type}|{cand_zone_id}|{cand_vswitch_id}|{cand_spot_price_limit:.3f}|{cand_cpu_cores}\n"
+        )
+
+    # Create candidates file
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as candidates_file:
-        for (
-            cand_instance_type,
-            cand_zone_id,
-            cand_price_per_core,
-            cand_cpu_cores,
-        ) in candidates:
-            # Calculate VSwitch ID and Spot Price Limit for each candidate
-            cand_vswitch_id = get_vswitch_id(cand_zone_id)
-            if not cand_vswitch_id:
-                # Skip candidates without VSwitch ID (will be skipped in subsequent steps)
-                continue
-
-            # Calculate Spot Price Limit
-            cand_total_price = cand_price_per_core * cand_cpu_cores
-            cand_spot_price_limit = cand_total_price * 1.2
-
-            candidates_file.write(
-                f"{cand_instance_type}|{cand_zone_id}|{cand_vswitch_id}|{cand_spot_price_limit:.4f}|{cand_cpu_cores}\n"
-            )
+        candidates_file.writelines(candidate_rows)
 
     # Output results (for GitHub Actions to capture)
     print(f"INSTANCE_TYPE={instance_type}")
     print(f"ZONE_ID={zone_id}")
     print(f"VSWITCH_ID={vswitch_id}")
-    print(f"SPOT_PRICE_LIMIT={spot_price_limit:.4f}")
+    print(f"SPOT_PRICE_LIMIT={spot_price_limit:.3f}")
     print(f"CPU_CORES={cpu_cores}")
     print(f"CANDIDATES_FILE={candidates_file.name}")
 
@@ -552,8 +612,8 @@ def main():
     print(f"  VSwitch: {vswitch_id}", file=sys.stderr)
     print(f"  CPU Cores: {cpu_cores}", file=sys.stderr)
     print(f"  Price per core: {price_per_core}", file=sys.stderr)
-    print(f"  Total price: {total_price:.4f}", file=sys.stderr)
-    print(f"  Spot price limit: {spot_price_limit:.4f}", file=sys.stderr)
+    print(f"  Total price: {total_price:.3f}", file=sys.stderr)
+    print(f"  Spot price limit: {spot_price_limit:.3f}", file=sys.stderr)
     print(f"  Candidates available: {len(candidates)}", file=sys.stderr)
 
 

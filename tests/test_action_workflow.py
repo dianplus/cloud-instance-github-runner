@@ -146,3 +146,56 @@ def test_cleanup_captures_console_output_before_deletion():
         f"identical (got {env_match.group(1)!r} vs {path_match.group(1)!r}); "
         "drift loses the forensics artifact"
     )
+
+
+def test_spot_inputs_and_env_wiring():
+    # Blueprint spot-bid-params-v1 (spot-bid AC-6): action.yml must declare
+    # the spot_price_multiplier / spot_duration inputs as bare string inputs
+    # (defaults "1.2" / "1" preserve current behavior). Neither may declare
+    # type: boolean -- GitHub coerces a boolean input's "0"/empty string to
+    # false, which breaks downstream int parsing. The multiplier env must be
+    # injected into the select step (it is consumed where prices are known);
+    # the duration env into the create step (it rides the RunInstances call).
+    for input_name, default_value in (
+        ("spot_price_multiplier", "1.2"),
+        ("spot_duration", "1"),
+    ):
+        decl_match = re.search(rf"(?m)^  {input_name}:\n((?:    .*\n?)*)", ACTION_YML_TEXT)
+        assert decl_match is not None, (
+            f"spot-bid AC-6: action.yml must declare the '{input_name}' input "
+            "so callers can tune the spot bid strategy"
+        )
+        decl_block = decl_match.group(1)
+        assert re.search(rf'default:\s*"{default_value}"', decl_block), (
+            f"spot-bid AC-6: the '{input_name}' input must declare "
+            f'default: "{default_value}" to preserve current behavior; '
+            f"declaration block:\n{decl_block}"
+        )
+        assert not re.search(r"type:\s*boolean", decl_block), (
+            f"spot-bid AC-6: the '{input_name}' input must NOT declare "
+            'type: boolean -- GitHub coerces a boolean input\'s "0"/empty '
+            "string to false, breaking downstream int parsing; "
+            f"declaration block:\n{decl_block}"
+        )
+
+    select_block = _step_block_containing("- name: Select Optimal Instance")
+    assert select_block is not None, (
+        "spot-bid AC-6: 'Select Optimal Instance' step not declared in action.yml"
+    )
+    assert re.search(r"(?m)^\s*SPOT_PRICE_MULTIPLIER\s*:", "\n".join(select_block)), (
+        "spot-bid AC-6: the Select Optimal Instance step env must inject "
+        "SPOT_PRICE_MULTIPLIER (the multiplier is applied where price data "
+        "lives, feeding both the main SPOT_PRICE_LIMIT and every retry "
+        "candidate); step block:\n" + "\n".join(select_block)
+    )
+
+    create_block = _step_block_containing("- name: Create Spot Instance")
+    assert create_block is not None, (
+        "spot-bid AC-6: 'Create Spot Instance' step not declared in action.yml"
+    )
+    assert re.search(r"(?m)^\s*SPOT_DURATION\s*:", "\n".join(create_block)), (
+        "spot-bid AC-6: the Create Spot Instance step env must inject "
+        "SPOT_DURATION so the protection period reaches "
+        "create_spot_instance.py's RunInstances call; "
+        "step block:\n" + "\n".join(create_block)
+    )

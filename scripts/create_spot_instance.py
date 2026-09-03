@@ -204,19 +204,6 @@ def parse_candidates_file(
     return candidates
 
 
-def calculate_spot_price_limit(
-    price_per_core: float | None,
-    cpu_cores: int | None,
-    default_limit: str | None = None,
-) -> str | None:
-    """Calculate Spot price limit"""
-    if price_per_core and cpu_cores:
-        total_price = price_per_core * cpu_cores
-        spot_price_limit = total_price * 1.2
-        return f"{spot_price_limit:.4f}"
-    return default_limit
-
-
 def get_supported_disk_category(
     region_id: str, instance_type: str, zone_id: str | None = None
 ) -> str:
@@ -293,6 +280,25 @@ def load_ttl_minutes() -> int:
         error_exit(f"INSTANCE_TTL_MINUTES must be an integer number of minutes; got {raw!r}")
 
 
+def load_spot_duration() -> int:
+    """Load SPOT_DURATION (spot protection period in hours).
+
+    Missing or empty falls back to the default 1 (the API default);
+    the API only accepts 0 (no protection) or 1 (1-hour protection),
+    so any other value fails loudly instead of being silently clamped.
+    """
+    raw = os.environ.get("SPOT_DURATION", "").strip()
+    if not raw:
+        return 1
+    try:
+        duration = int(raw)
+    except ValueError:
+        error_exit(f"SPOT_DURATION must be an integer number of hours and only 0 or 1; got {raw!r}")
+    if duration not in (0, 1):
+        error_exit(f"SPOT_DURATION must be an integer number of hours and only 0 or 1; got {raw!r}")
+    return duration
+
+
 def compute_auto_release_time(ttl_minutes: int, now_epoch: float) -> str:
     """Compute the AutoReleaseTime timestamp (ISO8601 UTC) for cloud-side billing backstop.
 
@@ -328,6 +334,7 @@ def create_instance(
     spot_price_limit: str | None = None,
     user_data_b64: str | None = None,
     system_disk_category: str | None = None,
+    spot_duration: int | None = None,
 ) -> tuple[int, str]:
     """Create ECS instance"""
     # If disk category is not specified, auto-detect
@@ -384,6 +391,9 @@ def create_instance(
     else:
         cmd.extend(["--SpotStrategy", "SpotAsPriceGo"])
 
+    if spot_duration is not None:
+        cmd.extend(["--SpotDuration", str(spot_duration)])
+
     if user_data_b64:
         cmd.extend(["--UserData", user_data_b64])
 
@@ -433,6 +443,7 @@ def main():
     arch = os.environ.get("ARCH", "amd64")
     spot_price_limit = os.environ.get("SPOT_PRICE_LIMIT")
     candidates_file = os.environ.get("CANDIDATES_FILE")
+    spot_duration = load_spot_duration()
 
     # Use unified function to get image ID (supports image family)
     image_id = get_image_id(region_id)
@@ -476,6 +487,7 @@ def main():
     print(f"Image ID: {image_id}", file=sys.stderr)
     auto_release_time = compute_auto_release_time(load_ttl_minutes(), time.time())
     print(f"Auto Release Time: {auto_release_time}", file=sys.stderr)
+    print(f"Spot Duration: {spot_duration} hour(s)", file=sys.stderr)
     if key_pair_name:
         print(f"Key Pair Name: {key_pair_name}", file=sys.stderr)
     if spot_price_limit:
@@ -539,6 +551,7 @@ def main():
                     spot_price_limit=cand_spot_price_limit,
                     user_data_b64=user_data_b64,
                     system_disk_category=disk_category,
+                    spot_duration=spot_duration,
                 )
 
                 # Check if successful
@@ -630,6 +643,7 @@ def main():
                 spot_price_limit=spot_price_limit,
                 user_data_b64=user_data_b64,
                 system_disk_category=disk_category,
+                spot_duration=spot_duration,
             )
 
             # Check if successful
