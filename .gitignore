@@ -260,3 +260,6 @@ AGENTS.md
 .env.solidforge
 !.env.example
 !.env.solidforge.example
+
+# cross-source-review run artifacts
+/workspace/
