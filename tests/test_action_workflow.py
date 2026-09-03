@@ -199,3 +199,54 @@ def test_spot_inputs_and_env_wiring():
         "create_spot_instance.py's RunInstances call; "
         "step block:\n" + "\n".join(create_block)
     )
+
+
+def test_spot_strategy_input_and_env_wiring():
+    """spot-bid v2 AC-9: action.yml must declare the spot_strategy input
+    (bare string, default "SpotWithPriceLimit") and wire SPOT_STRATEGY into
+    ONLY the create step -- the strategy is consumed exclusively by
+    create_spot_instance.py's RunInstances call, so the select step must stay
+    byte-identical (select-side pricing/sorting is untouched by the strategy).
+    """
+    decl_match = re.search(r"(?m)^  spot_strategy:\n((?:    .*\n?)*)", ACTION_YML_TEXT)
+    assert decl_match is not None, (
+        "spot-bid v2 AC-9: action.yml must declare the 'spot_strategy' input "
+        "so callers can explicitly opt into automatic bidding (SpotAsPriceGo)"
+    )
+    decl_block = decl_match.group(1)
+    assert re.search(r'default:\s*"SpotWithPriceLimit"', decl_block), (
+        "spot-bid v2 AC-9: the 'spot_strategy' input must declare "
+        'default: "SpotWithPriceLimit"" '
+        "(v1.4.0 behavior preserved on the default path; with no price limit "
+        "the delta is AC-8(c)'s loud error_exit); "
+        f"declaration block:\n{decl_block}"
+    )
+    assert not re.search(r"type:\s*boolean", decl_block), (
+        "spot-bid v2 AC-9: the 'spot_strategy' input must NOT declare "
+        "type: boolean -- GitHub coerces a boolean input to true/false, "
+        "which cannot carry the SpotWithPriceLimit/SpotAsPriceGo enum; "
+        f"declaration block:\n{decl_block}"
+    )
+
+    create_block = _step_block_containing("- name: Create Spot Instance")
+    assert create_block is not None, (
+        "spot-bid v2 AC-9: 'Create Spot Instance' step not declared in action.yml"
+    )
+    assert re.search(r"(?m)^\s*SPOT_STRATEGY\s*:", "\n".join(create_block)), (
+        "spot-bid v2 AC-9: the Create Spot Instance step env must inject "
+        "SPOT_STRATEGY so load_spot_strategy() in create_spot_instance.py can "
+        "apply the v2 three-branch semantics on the RunInstances command; "
+        "step block:\n" + "\n".join(create_block)
+    )
+
+    select_block = _step_block_containing("- name: Select Optimal Instance")
+    assert select_block is not None, (
+        "spot-bid v2 AC-9: 'Select Optimal Instance' step not declared in action.yml"
+    )
+    assert not re.search(r"(?m)^\s*SPOT_STRATEGY\s*:", "\n".join(select_block)), (
+        "spot-bid v2 AC-9 (reverse pin): the Select Optimal Instance step env "
+        "must NOT inject SPOT_STRATEGY -- the strategy is consumed only on "
+        "the create side; select_instance.py stays zero-change (advisor prices "
+        "still drive ranking and the candidates file); "
+        "step block:\n" + "\n".join(select_block)
+    )

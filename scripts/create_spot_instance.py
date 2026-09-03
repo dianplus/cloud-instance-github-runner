@@ -299,6 +299,51 @@ def load_spot_duration() -> int:
     return duration
 
 
+def load_spot_strategy() -> str | None:
+    """Load SPOT_STRATEGY (spot bidding strategy).
+
+    Missing or empty means the caller expressed no choice: return None so the
+    creation paths keep the legacy auto fallback (price limit available ->
+    SpotWithPriceLimit, none -> SpotAsPriceGo). Any non-empty value is matched
+    case-insensitively against the two legal enum names and normalized to the
+    canonical spelling; anything else fails loudly with both legal values listed
+    (NoSpot is out of scope for this action and is never silently coerced).
+    """
+    raw = os.environ.get("SPOT_STRATEGY", "").strip()
+    if not raw:
+        return None
+    for canonical in ("SpotWithPriceLimit", "SpotAsPriceGo"):
+        if raw.lower() == canonical.lower():
+            return canonical
+    error_exit(f"SPOT_STRATEGY must be one of SpotWithPriceLimit, SpotAsPriceGo; got {raw!r}")
+
+
+def resolve_spot_strategy(
+    explicit_strategy: str | None, limit_source: str | None, limit_origin: str
+) -> tuple[str, str | None]:
+    """Resolve the (strategy, price limit) pair for a single creation attempt.
+
+    explicit_strategy None keeps the legacy auto fallback: a non-empty limit
+    source bids SpotWithPriceLimit with that limit, an empty one follows the
+    market price. An explicit SpotAsPriceGo ignores the limit source entirely
+    (the limit never joins the bid). An explicit SpotWithPriceLimit with an
+    empty limit source fails loudly instead of silently switching strategy.
+    """
+    if explicit_strategy is None:
+        if limit_source:
+            return "SpotWithPriceLimit", limit_source
+        return "SpotAsPriceGo", None
+    if explicit_strategy == "SpotAsPriceGo":
+        return "SpotAsPriceGo", None
+    if not limit_source:
+        error_exit(
+            "SPOT_STRATEGY=SpotWithPriceLimit requires a spot price limit, but the limit "
+            f"source for this creation is empty ({limit_origin}); refusing to silently "
+            "switch to SpotAsPriceGo"
+        )
+    return "SpotWithPriceLimit", limit_source
+
+
 def compute_auto_release_time(ttl_minutes: int, now_epoch: float) -> str:
     """Compute the AutoReleaseTime timestamp (ISO8601 UTC) for cloud-side billing backstop.
 
@@ -444,6 +489,7 @@ def main():
     spot_price_limit = os.environ.get("SPOT_PRICE_LIMIT")
     candidates_file = os.environ.get("CANDIDATES_FILE")
     spot_duration = load_spot_duration()
+    spot_strategy = load_spot_strategy()
 
     # Use unified function to get image ID (supports image family)
     image_id = get_image_id(region_id)
@@ -488,9 +534,10 @@ def main():
     auto_release_time = compute_auto_release_time(load_ttl_minutes(), time.time())
     print(f"Auto Release Time: {auto_release_time}", file=sys.stderr)
     print(f"Spot Duration: {spot_duration} hour(s)", file=sys.stderr)
+    print(f"Spot Strategy: {spot_strategy if spot_strategy else 'auto'}", file=sys.stderr)
     if key_pair_name:
         print(f"Key Pair Name: {key_pair_name}", file=sys.stderr)
-    if spot_price_limit:
+    if spot_price_limit and spot_strategy != "SpotAsPriceGo":
         print(f"Spot Price Limit: {spot_price_limit}", file=sys.stderr)
 
     # Implement retry mechanism (if candidates file exists)
@@ -525,8 +572,14 @@ def main():
             if user_data_content:
                 user_data_b64 = encode_user_data(user_data_content)
 
-            # Determine Spot strategy
-            spot_strategy = "SpotWithPriceLimit" if cand_spot_price_limit else "SpotAsPriceGo"
+            # Resolve Spot strategy for this candidate (limit source: the
+            # candidate row's price limit column)
+            attempt_strategy, attempt_price_limit = resolve_spot_strategy(
+                spot_strategy,
+                cand_spot_price_limit,
+                f"candidates file row {attempt} ({cand_instance_type}), "
+                f"price limit column of {candidates_file}",
+            )
 
             # Create instance (supports disk category fallback)
             disk_categories = ["cloud_essd", "cloud_ssd", "cloud_efficiency"]
@@ -547,8 +600,8 @@ def main():
                     instance_name=instance_name,
                     key_pair_name=key_pair_name,
                     ram_role_name=ram_role_name,
-                    spot_strategy=spot_strategy,
-                    spot_price_limit=cand_spot_price_limit,
+                    spot_strategy=attempt_strategy,
+                    spot_price_limit=attempt_price_limit,
                     user_data_b64=user_data_b64,
                     system_disk_category=disk_category,
                     spot_duration=spot_duration,
@@ -610,8 +663,10 @@ def main():
         if user_data_content:
             user_data_b64 = encode_user_data(user_data_content)
 
-        # Determine Spot strategy
-        spot_strategy = "SpotWithPriceLimit" if spot_price_limit else "SpotAsPriceGo"
+        # Resolve Spot strategy for this attempt (limit source: SPOT_PRICE_LIMIT)
+        attempt_strategy, attempt_price_limit = resolve_spot_strategy(
+            spot_strategy, spot_price_limit, "the SPOT_PRICE_LIMIT environment variable"
+        )
 
         # Build command display (without UserData)
         cmd_display = f"aliyun ecs RunInstances --RegionId {region_id} --ImageId {image_id} --InstanceType {instance_type} ..."
@@ -639,8 +694,8 @@ def main():
                 instance_name=instance_name,
                 key_pair_name=key_pair_name,
                 ram_role_name=ram_role_name,
-                spot_strategy=spot_strategy,
-                spot_price_limit=spot_price_limit,
+                spot_strategy=attempt_strategy,
+                spot_price_limit=attempt_price_limit,
                 user_data_b64=user_data_b64,
                 system_disk_category=disk_category,
                 spot_duration=spot_duration,

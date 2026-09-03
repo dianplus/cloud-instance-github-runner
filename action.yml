@@ -88,6 +88,10 @@ inputs:
     description: "Spot protection period in hours: 1 = Alibaba Cloud guarantees no system reclamation within the first hour (API default); 0 = no protection, reclaimable anytime. Only 0 or 1. Spot instances are billed by second regardless of this setting."
     required: false
     default: "1"
+  spot_strategy:
+    description: "Bidding strategy: SpotWithPriceLimit (default) bids market price x spot_price_multiplier as the max hourly price; SpotAsPriceGo follows the market price automatically — the multiplier and any computed price limit do NOT affect bidding (no --SpotPriceLimit is sent), though inputs are still fully validated. Explicit SpotAsPriceGo takes priority over the multiplier."
+    required: false
+    default: "SpotWithPriceLimit"
 
   # Proxy configuration
   http_proxy:
@@ -351,6 +355,7 @@ runs:
         INSTANCE_NAME: ${{ steps.runner-name.outputs.name }}
         INSTANCE_TTL_MINUTES: ${{ inputs.instance_ttl_minutes }}
         SPOT_DURATION: ${{ inputs.spot_duration }}
+        SPOT_STRATEGY: ${{ inputs.spot_strategy }}
         ARCH: ${{ inputs.arch }}
         SPOT_PRICE_LIMIT: ${{ steps.select-instance.outputs.SPOT_PRICE_LIMIT }}
         CANDIDATES_FILE: ${{ steps.select-instance.outputs.CANDIDATES_FILE }}

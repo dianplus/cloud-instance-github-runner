@@ -186,6 +186,7 @@ jobs:
 | `instance_ttl_minutes`               | 实例硬性生命周期上限（分钟）。到期后由阿里云在创建时间 + TTL 强制释放实例，即使实例内所有清理机制失效也能兜底计费（防止实例泄漏）。最小值 30。                                                                                                                             | `240`                                    |
 | `spot_price_multiplier`              | 作用于 spot 市场价的出价倍率，用于计算 SpotPriceLimit（最高小时出价）。默认 1.2（20% 余量）。必须为正有限数。                                                                                                                                                              | `1.2`                                    |
 | `spot_duration`                      | Spot 保护期（小时）：1 = 创建后 1 小时内保证不被系统回收；0 = 无保护期，随时可被回收。仅接受 0 或 1。无论取值如何均按秒计费。显式传递——隐式默认在生产上未可靠兑现保护。                                                                                                    | `1`                                      |
+| `spot_strategy`                      | 出价策略：SpotWithPriceLimit（默认）按 市场价×spot_price_multiplier 出价设上限；SpotAsPriceGo 系统自动出价随行就市——倍率/限价不影响出价（不发送 --SpotPriceLimit），但输入仍全量校验。显式 SpotAsPriceGo 优先于倍率。                                                      | `SpotWithPriceLimit`                     |
 | `arch`                               | 架构（`amd64` 或 `arm64`）                                                                                                                                                                                                                                                 | `amd64`                                  |
 | `min_cpu`                            | 最小 CPU 核心数                                                                                                                                                                                                                                                            | `8`                                      |
 | `min_mem`                            | 最小内存 GB（会根据架构自动计算）                                                                                                                                                                                                                                          | -                                        |
@@ -410,7 +411,7 @@ aliyun ram AttachPolicyToRole \
 4. 等待 Runner 注册上线
 5. 任务完成后自动删除实例
 
-Spot 出价可通过 `spot_price_multiplier` 调节（出价 = 市场价 × 倍率），系统回收保护窗口可通过 `spot_duration` 配置（无论保护期如何选择，spot 实例均按秒计费）。
+Spot 出价可通过 `spot_price_multiplier` 调节（出价 = 市场价 × 倍率），系统回收保护窗口可通过 `spot_duration` 配置（无论保护期如何选择，spot 实例均按秒计费），出价策略本身可通过 `spot_strategy` 选择。
 
 ## 故障排查
 
