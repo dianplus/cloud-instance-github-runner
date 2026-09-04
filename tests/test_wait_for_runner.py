@@ -11,6 +11,7 @@ Stub contract (marker files in the stub dir):
 """
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -128,3 +129,23 @@ def test_missing_token_fails_fast(tmp_path):
     assert rc == 1, f"missing GITHUB_TOKEN must fail fast; got rc={rc}:\n{out}"
     assert "GITHUB_TOKEN is required" in out
     assert not (tmp_path / "call_count").exists(), "validation must run before the first curl call"
+
+
+def test_timeout_comment_matches_default():
+    # wh AC-7: the TIMEOUT default line's trailing comment must match the
+    # actual default (120 seconds = 2 minutes); the stale "5 minutes"
+    # wording must be gone.
+    text = WAIT_SCRIPT.read_text(encoding="utf-8")
+    m = re.search(r'^TIMEOUT="\$\{TIMEOUT:-(\d+)\}"\s*(#.*)?$', text, re.MULTILINE)
+    assert m is not None, (
+        'wh AC-7: TIMEOUT default assignment (TIMEOUT="${TIMEOUT:-<n>}") not found '
+        "in scripts/wait-for-runner.sh"
+    )
+    assert m.group(1) == "120", (
+        f"wh AC-7: TIMEOUT default must remain 120 seconds; got {m.group(1)}"
+    )
+    comment = (m.group(2) or "").lower()
+    assert "5 minutes" not in comment, (
+        f"wh AC-7: the TIMEOUT comment must match the 120s default (2 minutes); "
+        f"stale comment present: {m.group(2)!r}"
+    )

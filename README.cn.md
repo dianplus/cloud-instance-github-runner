@@ -36,7 +36,7 @@ jobs:
     steps:
       - name: Setup Aliyun ECS Spot Runner
         id: setup-runner
-        uses: dianplus/cloud-instance-github-runner@v1.5.0
+        uses: dianplus/cloud-instance-github-runner@v1.5.1
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -91,7 +91,7 @@ jobs:
     # permissions 配置是可选的，因为本 Action 使用 PAT 而非 GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@v1.5.0
+        uses: dianplus/cloud-instance-github-runner@v1.5.1
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -109,7 +109,7 @@ jobs:
     # permissions 配置是可选的，因为本 Action 使用 PAT 而非 GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@v1.5.0
+        uses: dianplus/cloud-instance-github-runner@v1.5.1
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -140,7 +140,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@v1.5.0
+        uses: dianplus/cloud-instance-github-runner@v1.5.1
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -432,7 +432,7 @@ Spot 出价可通过 `spot_price_multiplier` 调节（出价 = 市场价 × 倍�
 
 - 检查实例角色是否正确配置
 - 查看自毁日志：`/var/log/self-destruct.log`
-- 检查 post-job hook 是否正常执行
+- 检查 runner-watchdog 日志是否显示停止确认窗口（6 次连续 inactive 探测）
 
 ## License
 

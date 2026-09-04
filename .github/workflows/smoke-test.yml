@@ -144,7 +144,7 @@ jobs:
               --InstanceIds "[\"${INSTANCE_ID}\"]" \
               | jq -r '.TotalCount')
             if [[ "${TOTAL}" == "0" ]]; then
-              echo "Instance ${INSTANCE_ID} verified gone after ~$((i * 10))s (post-job self-destruct)"
+              echo "Instance ${INSTANCE_ID} verified gone after ~$((i * 10))s (watchdog self-destruct)"
               exit 0
             fi
             sleep 10

@@ -5,6 +5,8 @@ task: fix-instance-leak-three-defenses
 status: frozen
 ---
 
+> NOTE (2026-09-04): AC-3 superseded by watchdog-hardening-v1 AC-5/AC-6 — post-job hook was a dead config (ACTIONS_RUNNER_HOOK_POST_JOB never read by runner; see incident review).
+
 # Intent Blueprint: 修复实例泄漏三道防线
 
 ## Background

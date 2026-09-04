@@ -148,9 +148,9 @@ fi
 # Set up instance self-destruct mechanism
 # NOTE: This chapter is deliberately placed BEFORE any Runner step so that a
 # bootstrap failure at any later stage (runner download, registration, service
-# install/start) still leaves the instance armed with three teardown paths:
-# EXIT trap (script dies non-zero), runner-watchdog (dead-man switch) and the
-# post-job hook (job completed).
+# install/start) still leaves the instance armed: EXIT trap (script dies
+# non-zero) + runner-watchdog (dead-man switch); the action workflow's failure
+# cleanup and the AutoReleaseTime floor cover the remaining teardown paths.
 echo "=== Setting up instance self-destruct mechanism ==="
 SELF_DESTRUCT_SCRIPT="/usr/local/bin/self-destruct.sh"
 
@@ -174,8 +174,8 @@ log() {
 
 log "=== Instance Self-Destruct Script Started ==="
 
-# Prevent concurrent duplicate destruction (EXIT trap / watchdog / post-job
-# hook may race); the loser exits quietly, the winner proceeds exactly once.
+# Prevent concurrent duplicate destruction (EXIT trap / watchdog may race);
+# the loser exits quietly, the winner proceeds exactly once.
 # /run (not /tmp): root-only tmpfs, so unprivileged job code cannot hold
 # the lock open and block self-destruction.
 exec 9> /run/self-destruct.lock
@@ -291,13 +291,34 @@ on_user_data_exit() {
       echo "Warning: /usr/local/bin/self-destruct.sh not armed yet; nothing to trigger"
     fi
   else
-    echo "Bootstrap completed successfully; teardown left to watchdog / post-job hook"
+    echo "Bootstrap completed successfully; teardown left to the runner-watchdog"
   fi
   # Preserve the original exit code (handler failures must not mask it)
   return "${exit_code}"
 }
 
 trap on_user_data_exit EXIT
+
+# Validate the operator escape-hatch override for the watchdog's stop-verdict
+# threshold (watchdog-hardening AC-9): read STOP_CONFIRMATIONS_REQUIRED from
+# /etc/environment -- the same channel the watchdog unit's EnvironmentFile
+# consumes -- with the pinned shape (line-anchored key, last duplicate wins,
+# value past the first '=', double quotes stripped). An existing but
+# non-positive-integer value must fail user-data NOW: the EXIT trap above then
+# triggers self-destruct (loud, no residual instance). Validating inside the
+# watchdog instead would loop its Restart=on-failure into start-limit and
+# silently kill the dead-man switch. A missing key is the legal "no override
+# expressed" path: the watchdog default (STOP_CONFIRMATIONS_REQUIRED:-6)
+# applies, not a silent fallback.
+STOP_CONFIRMATIONS_REQUIRED_RAW=""
+if grep -q '^STOP_CONFIRMATIONS_REQUIRED=' /etc/environment 2>/dev/null; then
+  STOP_CONFIRMATIONS_REQUIRED_RAW="$(grep '^STOP_CONFIRMATIONS_REQUIRED=' /etc/environment | tail -1 | cut -d= -f2- | tr -d '"' || true)"
+  if ! [[ "${STOP_CONFIRMATIONS_REQUIRED_RAW}" =~ ^[0-9]+$ ]] || [[ "${STOP_CONFIRMATIONS_REQUIRED_RAW}" -eq 0 ]]; then
+    echo "Error: STOP_CONFIRMATIONS_REQUIRED must be a positive integer, got '${STOP_CONFIRMATIONS_REQUIRED_RAW}'" >&2
+    exit 1
+  fi
+  echo "STOP_CONFIRMATIONS_REQUIRED override: ${STOP_CONFIRMATIONS_REQUIRED_RAW} consecutive confirmations"
+fi
 
 # Create runner watchdog (dead-man switch)
 # Replaces the old inline self-destruct.service glob-wait loop: that loop
@@ -312,13 +333,20 @@ cat > /usr/local/bin/runner-watchdog.sh << 'WATCHDOG_EOF'
 # Phase 1 (bootstrap wait): wait up to BOOTSTRAP_WATCH_TIMEOUT seconds for an
 #   actions.runner.*.service to become active. Timeout means bootstrap died
 #   without tripping the EXIT trap (e.g. reboot, kill -9) -> self-destruct.
-# Phase 2 (run watch): once the runner is active, wait for it to stop
-#   (ephemeral runner finished its single job) -> self-destruct.
+# Phase 2 (run watch): once the runner is active, self-destruct only after
+#   STOP_CONFIRMATIONS_REQUIRED consecutive confirmed-inactive probes (the
+#   ephemeral runner finished its single job), so a transient query failure
+#   can never kill a healthy runner on a single hit.
 # Note: no `set -e` here on purpose - a watchdog must not die silently on a
 # failed probe; every branch below is self-guarded.
 
 # Bound for phase 1; overridable via environment (e.g. systemd unit override)
 BOOTSTRAP_WATCH_TIMEOUT="${BOOTSTRAP_WATCH_TIMEOUT:-1800}"
+# Phase-2 stop verdict: consecutive confirmed-inactive probes required before
+# self-destruction; any active probe resets the streak. Default
+# 6 x POLL_INTERVAL_SECONDS(5s) = 30s window; overridable via environment,
+# validated at user-data bootstrap time.
+STOP_CONFIRMATIONS_REQUIRED="${STOP_CONFIRMATIONS_REQUIRED:-6}"
 POLL_INTERVAL_SECONDS=5
 SELF_DESTRUCT_SCRIPT="/usr/local/bin/self-destruct.sh"
 
@@ -326,20 +354,65 @@ log() {
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] runner-watchdog: $*" | tee -a /var/log/runner-watchdog.log
 }
 
-# True when at least one actions.runner.*.service is currently active.
-# The unit pattern is QUOTED so systemd (not the shell) expands it: an empty
-# result means "not active right now", never "glob did not match = stopped".
-runner_service_active() {
-    [[ -n "$(systemctl list-units --type=service --state=active --no-legend --no-pager 'actions.runner.*.service' 2>/dev/null)" ]]
+# Tri-state probe of the actions.runner.* services. The unit pattern is
+# QUOTED so systemd (not the shell) expands it: an empty result means "not
+# active right now", never "glob did not match = stopped".
+#   systemctl rc=0 + non-empty output -> "active"
+#   systemctl rc=0 + empty output    -> "inactive" (confirmed-inactive: the
+#       query SUCCEEDED and no unit is active -- valid stop evidence)
+#   systemctl rc!=0                  -> "unknown" (the query itself failed;
+#       NEVER stop evidence -- stderr stays suppressed, the captured exit
+#       code keeps the states apart)
+runner_service_probe() {
+    local units
+    units="$(systemctl list-units --type=service --state=active --no-legend --no-pager 'actions.runner.*.service' 2>/dev/null)"
+    local rc=$?
+    if [[ ${rc} -ne 0 ]]; then
+        echo "unknown"
+    elif [[ -n "${units}" ]]; then
+        echo "active"
+    else
+        echo "inactive"
+    fi
 }
 
-log "started (BOOTSTRAP_WATCH_TIMEOUT=${BOOTSTRAP_WATCH_TIMEOUT}s)"
+# Pre-destruction forensics dump (best-effort by design): the probe timeline
+# (tri-state, timestamped, already in the watchdog log), a systemctl status
+# tail and a journal tail, each size-capped (tail -c, 16KB total budget).
+# Output goes to the watchdog log AND the serial console (/dev/console --
+# GetInstanceConsoleOutput can capture it before the instance vanishes).
+# Every segment is self-guarded: a dump failure must never block or replace
+# the self-destruct path below.
+dump_forensics() {
+    {
+        echo "=== runner-watchdog forensics dump before self-destruct ==="
+        echo "--- probe timeline (tail) ---"
+        tail -c 4096 /var/log/runner-watchdog.log 2>/dev/null || true
+        echo "--- systemctl status (tail) ---"
+        systemctl status 'actions.runner.*.service' --no-pager --lines=20 2>/dev/null | tail -c 4096 || true
+        echo "--- journal (tail) ---"
+        journalctl --no-pager -n 200 2>/dev/null | tail -c 8192 || true
+    } 2>/dev/null | tee -a /var/log/runner-watchdog.log /dev/console >/dev/null 2>&1 || true
+}
 
-# Phase 1: bounded dead-man wait for the runner service to appear
+log "started (BOOTSTRAP_WATCH_TIMEOUT=${BOOTSTRAP_WATCH_TIMEOUT}s, STOP_CONFIRMATIONS_REQUIRED=${STOP_CONFIRMATIONS_REQUIRED})"
+
+# Phase 1: bounded dead-man wait for the runner service to appear. Only an
+# "active" probe ends the wait; "inactive" (not up yet) and "unknown" (query
+# failed) both fall into the sleep-and-continue branch -- a query failure is
+# not bootstrap death.
 deadline=$(( $(date +%s) + BOOTSTRAP_WATCH_TIMEOUT ))
-until runner_service_active; do
+while true; do
+    state="$(runner_service_probe)"
+    if [[ "${state}" == "active" ]]; then
+        break
+    fi
+    if [[ "${state}" == "unknown" ]]; then
+        log "bootstrap wait: probe unknown (systemctl query failed); keep waiting"
+    fi
     if [[ $(date +%s) -ge ${deadline} ]]; then
         log "runner service never became active within ${BOOTSTRAP_WATCH_TIMEOUT}s (bootstrap failed) -> self-destruct"
+        dump_forensics
         exec "${SELF_DESTRUCT_SCRIPT}"
     fi
     sleep "${POLL_INTERVAL_SECONDS}"
@@ -347,13 +420,33 @@ done
 
 log "runner service is active; watching for it to stop"
 
-# Phase 2: poll until the runner service stops, then self-destruct
-while runner_service_active; do
+# Phase 2: poll until the runner service stops. A stop verdict requires
+# STOP_CONFIRMATIONS_REQUIRED consecutive confirmed-inactive probes; any
+# active probe resets the streak; an unknown probe neither increments nor
+# resets it (probe jitter must not stretch the window forever nor erase
+# accumulated stop evidence -- the leak side stays bounded by
+# AutoReleaseTime).
+confirmations=0
+while true; do
+    state="$(runner_service_probe)"
+    if [[ "${state}" == "active" ]]; then
+        if [[ ${confirmations} -gt 0 ]]; then
+            log "probe: active again; ${confirmations} confirmation(s) cleared"
+        fi
+        confirmations=0
+    elif [[ "${state}" == "inactive" ]]; then
+        confirmations=$((confirmations + 1))
+        log "probe: confirmed-inactive ${confirmations}/${STOP_CONFIRMATIONS_REQUIRED}"
+        if [[ ${confirmations} -ge ${STOP_CONFIRMATIONS_REQUIRED} ]]; then
+            log "runner service stopped (${STOP_CONFIRMATIONS_REQUIRED} consecutive confirmed-inactive probes) -> self-destruct"
+            dump_forensics
+            exec "${SELF_DESTRUCT_SCRIPT}"
+        fi
+    else
+        log "probe: unknown (systemctl query failed); streak stays at ${confirmations}/${STOP_CONFIRMATIONS_REQUIRED}"
+    fi
     sleep "${POLL_INTERVAL_SECONDS}"
 done
-
-log "runner service stopped -> self-destruct"
-exec "${SELF_DESTRUCT_SCRIPT}"
 WATCHDOG_EOF
 
 chmod +x /usr/local/bin/runner-watchdog.sh
@@ -385,8 +478,8 @@ systemctl daemon-reload
 systemctl enable runner-watchdog.service
 systemctl start runner-watchdog.service
 
-echo "Self-destruct armed: EXIT trap (non-zero exit) + runner-watchdog (dead-man) + post-job hook (job done)"
-echo "Instance will be automatically deleted when bootstrap fails, or when the Runner service stops / job completes"
+echo "Self-destruct armed: EXIT trap (non-zero exit) + runner-watchdog (dead-man)"
+echo "Instance will be automatically deleted when bootstrap fails, or when the Runner service stops"
 
 # Install GitHub Actions Runner
 echo "=== Installing GitHub Actions Runner ==="
@@ -447,22 +540,8 @@ echo "Writing runner environment file: ${RUNNER_DIR}/.env"
   echo "http_proxy=${HTTP_PROXY}"
   echo "https_proxy=${HTTPS_PROXY}"
   echo "no_proxy=${NO_PROXY}"
-  # Configure post-job hook (must be configured before service starts)
-  echo "export ACTIONS_RUNNER_HOOK_POST_JOB=\"${RUNNER_DIR}/post-job-hook.sh\""
 } > "${RUNNER_DIR}/.env"
 chmod 600 "${RUNNER_DIR}/.env" || true
-
-# Create post-job hook script (must exist BEFORE the runner service starts: the
-# service reads ACTIONS_RUNNER_HOOK_POST_JOB from the .env file above and will
-# fail the hook path resolution if the script is missing at start time)
-cat > "${RUNNER_DIR}/post-job-hook.sh" << 'HOOK_EOF'
-#!/bin/bash
-# Runner post-job hook
-# Execute instance self-destruct after job completes
-/usr/local/bin/self-destruct.sh
-HOOK_EOF
-
-chmod +x "${RUNNER_DIR}/post-job-hook.sh"
 
 ./svc.sh install root
 

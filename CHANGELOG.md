@@ -13,6 +13,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.5.1] - 2026-09-04
+
+### Added
+
+- Hardened runner-watchdog: three-state probe (active / confirmed-inactive / query-failure-unknown) separates transient query failures from confirmed service stops; self-destruct now requires N consecutive confirmed-inactive probes (STOP_CONFIRMATIONS_REQUIRED, default 6 = 30s) instead of a single miss
+- Added pre-destroy forensics dump (probe timeline + systemctl/journal tails, size-capped, to watchdog log + serial console)
+- Added bootstrap-time validation of STOP_CONFIRMATIONS_REQUIRED from /etc/environment (loud failure via EXIT trap)
+
+### Changed
+
+### Removed
+
+- Removed inert post-job hook dead config (ACTIONS_RUNNER_HOOK_POST_JOB never read by the runner; official variable is ACTIONS_RUNNER_HOOK_JOB_COMPLETED — teardown is handled by the hardened watchdog)
+
+### Fixed
+
+- Fixed stale wait-for-runner.sh timeout comment ("5 minutes" -> 120 seconds)
+
 ## [1.5.0] - 2026-09-03
 
 ### Added

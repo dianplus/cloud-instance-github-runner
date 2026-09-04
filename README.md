@@ -36,7 +36,7 @@ jobs:
     steps:
       - name: Setup Aliyun ECS Spot Runner
         id: setup-runner
-        uses: dianplus/cloud-instance-github-runner@v1.5.0
+        uses: dianplus/cloud-instance-github-runner@v1.5.1
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -91,7 +91,7 @@ jobs:
     # permissions configuration is optional since this Action uses PAT instead of GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@v1.5.0
+        uses: dianplus/cloud-instance-github-runner@v1.5.1
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -109,7 +109,7 @@ jobs:
     # permissions configuration is optional since this Action uses PAT instead of GITHUB_TOKEN
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@v1.5.0
+        uses: dianplus/cloud-instance-github-runner@v1.5.1
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -140,7 +140,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Setup Aliyun ECS Spot Runner
-        uses: dianplus/cloud-instance-github-runner@v1.5.0
+        uses: dianplus/cloud-instance-github-runner@v1.5.1
         with:
           aliyun_access_key_id: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
           aliyun_access_key_secret: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
@@ -432,7 +432,7 @@ Spot bidding is tunable via `spot_price_multiplier` (bid = market price × multi
 
 - Check if instance role is correctly configured
 - View self-destruct logs: `/var/log/self-destruct.log`
-- Check if post-job hook is executing normally
+- Check the runner-watchdog log shows the stop confirmation window (6 consecutive inactive probes)
 
 ## License
 
