@@ -402,7 +402,12 @@ runs:
         TEMPLATE_FILE: ${{ github.action_path }}/templates/user-data.sh
         RUNNER_REGISTRATION_TOKEN: ${{ steps.get-token.outputs.result }}
         GITHUB_REPOSITORY: ${{ github.repository }}
-        RUNNER_NAME: ${{ steps.runner-name.outputs.name }}
+        # Not RUNNER_NAME: the Actions runner injects that into every step,
+        # holding the name of the agent executing the job, and a step-level env
+        # cannot override an injected default. Carrying the new instance's name
+        # under it means a self-hosted host hands the instance its own agent
+        # name, and config.sh --replace then takes over the host registration.
+        SPOT_RUNNER_NAME: ${{ steps.runner-name.outputs.name }}
         RUNNER_LABELS: ${{ inputs.runner_labels }}
         RUNNER_VERSION: ${{ steps.runner-version.outputs.version }}
         WATCHDOG_STOP_WINDOW_SECONDS: ${{ inputs.watchdog_stop_window_seconds }}
@@ -508,7 +513,12 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         GITHUB_REPOSITORY: ${{ github.repository }}
-        RUNNER_NAME: ${{ steps.runner-name.outputs.name }}
+        # Not RUNNER_NAME: the Actions runner injects that into every step,
+        # holding the name of the agent executing the job, and a step-level env
+        # cannot override an injected default. Carrying the new instance's name
+        # under it means a self-hosted host hands the instance its own agent
+        # name, and config.sh --replace then takes over the host registration.
+        SPOT_RUNNER_NAME: ${{ steps.runner-name.outputs.name }}
         TIMEOUT: ${{ inputs.runner_wait_timeout }}
         INTERVAL: 10
       run: |
