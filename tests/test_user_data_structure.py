@@ -182,7 +182,7 @@ def test_watchdog_probe_distinguishes_query_failure():
 
 def test_watchdog_requires_consecutive_confirmations():
     # wh AC-2: phase-2 self-destruction requires STOP_CONFIRMATIONS_REQUIRED
-    # (default 6, i.e. 6 x POLL_INTERVAL_SECONDS 5s = 30s) consecutive
+    # (default 24, i.e. 24 x POLL_INTERVAL_SECONDS 5s = 2min) consecutive
     # confirmed-inactive probes; any active probe resets the streak.
     watchdog = _watchdog_heredoc()
     assert watchdog is not None, "wh AC-2: watchdog heredoc (WATCHDOG_EOF) not found"
@@ -190,12 +190,12 @@ def test_watchdog_requires_consecutive_confirmations():
     assert "STOP_CONFIRMATIONS_REQUIRED" in watchdog, (
         "wh AC-2: STOP_CONFIRMATIONS_REQUIRED must be referenced inside the watchdog script"
     )
-    assert re.search(r"STOP_CONFIRMATIONS_REQUIRED.{0,60}?(:-6|=6)", watchdog), (
-        "wh AC-2: STOP_CONFIRMATIONS_REQUIRED default must be 6 in the watchdog "
-        "(':-6' or '=6' text)"
+    assert re.search(r"STOP_CONFIRMATIONS_REQUIRED.{0,60}?(:-24|=24)", watchdog), (
+        "wh AC-2: STOP_CONFIRMATIONS_REQUIRED default must be 24 in the watchdog "
+        "(':-24' or '=24' text)"
     )
-    assert re.search(r"(?i)(6\s*[x×*]\s*5|\b30\s?s\b)", watchdog), (
-        "wh AC-2: the confirmation-window arithmetic (6 x 5s = 30s) must be documented"
+    assert re.search(r"(?i)(24\s*[x×*]\s*5|\b2\s?min\b)", watchdog), (
+        "wh AC-2: the confirmation-window arithmetic (24 x 5s = 2min) must be documented"
     )
 
     wlines = watchdog.splitlines()
@@ -410,14 +410,14 @@ def test_watchdog_invalid_confirmations_fails_loudly():
     )
 
     # a missing key is the legal 'no override expressed' path: guarded read,
-    # no exit, documented default 6.
+    # no exit, documented default 24.
     assert ("|| true" in slice_text) or re.search(r"if\s+[^;\n]*grep", slice_text), (
         "wh AC-9: the /etc/environment read must be guarded (if-grep or '|| true'); "
         "under 'set -euo pipefail' an unguarded no-match grep exits non-zero and "
         "inverts the semantics into 'missing key -> self-destruct'"
     )
-    assert re.search(r"STOP_CONFIRMATIONS_REQUIRED.{0,80}?(:-6|=6)", slice_text), (
-        "wh AC-9: a missing key must fall back to the documented default 6 (':-6' or '=6' text)"
+    assert re.search(r"STOP_CONFIRMATIONS_REQUIRED.{0,80}?(:-24|=24)", slice_text), (
+        "wh AC-9: a missing key must fall back to the documented default 24 (':-24' or '=24' text)"
     )
 
     # negative: the validation must not run inside the watchdog script.

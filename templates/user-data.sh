@@ -308,7 +308,7 @@ trap on_user_data_exit EXIT
 # triggers self-destruct (loud, no residual instance). Validating inside the
 # watchdog instead would loop its Restart=on-failure into start-limit and
 # silently kill the dead-man switch. A missing key is the legal "no override
-# expressed" path: the watchdog default (STOP_CONFIRMATIONS_REQUIRED:-6)
+# expressed" path: the watchdog default (STOP_CONFIRMATIONS_REQUIRED:-24)
 # applies, not a silent fallback.
 STOP_CONFIRMATIONS_REQUIRED_RAW=""
 if grep -q '^STOP_CONFIRMATIONS_REQUIRED=' /etc/environment 2>/dev/null; then
@@ -344,9 +344,17 @@ cat > /usr/local/bin/runner-watchdog.sh << 'WATCHDOG_EOF'
 BOOTSTRAP_WATCH_TIMEOUT="${BOOTSTRAP_WATCH_TIMEOUT:-1800}"
 # Phase-2 stop verdict: consecutive confirmed-inactive probes required before
 # self-destruction; any active probe resets the streak. Default
-# 6 x POLL_INTERVAL_SECONDS(5s) = 30s window; overridable via environment,
+# 24 x POLL_INTERVAL_SECONDS(5s) = 2min window; overridable via environment,
 # validated at user-data bootstrap time.
-STOP_CONFIRMATIONS_REQUIRED="${STOP_CONFIRMATIONS_REQUIRED:-6}"
+# 24 rather than 6: at 6 the window is 30s, and a runner older than the
+# version GitHub currently serves updates itself the moment a job arrives,
+# which restarts the service. Downloading and unpacking the new runner through
+# a NAT gateway passes 30s often enough that the watchdog reaches its verdict
+# and deletes the instance mid-job; the job ends with a shutdown signal, which
+# reads as infrastructure flakiness rather than as the dead-man switch firing.
+# The cost of the wider window stays bounded by AutoReleaseTime
+# (instance_ttl_minutes): the worst case is a longer idle instance, not a leak.
+STOP_CONFIRMATIONS_REQUIRED="${STOP_CONFIRMATIONS_REQUIRED:-24}"
 POLL_INTERVAL_SECONDS=5
 SELF_DESTRUCT_SCRIPT="/usr/local/bin/self-destruct.sh"
 

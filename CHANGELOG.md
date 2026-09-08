@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Widened the watchdog stop verdict from 6 to 24 consecutive confirmed-inactive probes (30s to 2min). A runner older than the version GitHub serves self-updates when a job arrives, and the service restart could outlast the 30s window, so the watchdog destroyed the instance mid-job (blueprint watchdog-hardening v1.1)
+
 ## [1.5.1] - 2026-09-04
 
 ### Added
