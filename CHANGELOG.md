@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Renamed the env var carrying the new instance's runner name to SPOT_RUNNER_NAME. RUNNER_NAME is injected into every step by the Actions runner with the host agent's own name and cannot be overridden at step level, so on a self-hosted runner the instance registered under the host agent name and config.sh --replace took over its registration
 - Masked the base64 derived form of the registration token as well: the Create Spot Instance step's env banner prints USER_DATA_B64 verbatim and setSecret only masks the exact raw string, so a decodable copy of the token reached the job log; the generate step now registers the b64 value with ::add-mask:: (companion to the core.setSecret fix; empirically confirmed against a pre-fix run's log archive)
 - Removed the dead `export DEBUG=true` from the create step (no consumer in scripts/ or templates/)
 - Masked the runner registration token with core.setSecret. A token minted at run time is not one of the workflow's configured secrets, so nothing masked it: every later step that carried it through `env:` printed it in clear text in the job log (the step-start banner lists resolved env values), and the token is enough to attach a self-hosted runner to this repository for an hour

@@ -54,7 +54,7 @@ def _run_wait(tmp_path, stub_bin, env_overrides=None):
         "STUB_DIR": str(tmp_path),
         "GITHUB_TOKEN": "test-token",
         "GITHUB_REPOSITORY": "octo-org/example-repo",
-        "RUNNER_NAME": RUNNER_NAME,
+        "SPOT_RUNNER_NAME": RUNNER_NAME,
         "TIMEOUT": "2",
         "INTERVAL": "1",
         "GITHUB_OUTPUT": str(tmp_path / "github_output"),
