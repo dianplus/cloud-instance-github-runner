@@ -9,7 +9,10 @@ set -euo pipefail
 TEMPLATE_FILE="${TEMPLATE_FILE:-templates/user-data.sh}"
 RUNNER_REGISTRATION_TOKEN="${RUNNER_REGISTRATION_TOKEN:-}"
 GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}"
-RUNNER_NAME="${RUNNER_NAME:-}"
+# Read SPOT_RUNNER_NAME, not RUNNER_NAME: the latter is a default variable the
+# Actions runner injects into every step, holding the host agent's own name,
+# which would overwrite this on a self-hosted runner.
+RUNNER_NAME="${SPOT_RUNNER_NAME:-}"
 RUNNER_LABELS="${RUNNER_LABELS:-}"
 RUNNER_VERSION="${RUNNER_VERSION:-}"
 HTTP_PROXY="${HTTP_PROXY:-}"

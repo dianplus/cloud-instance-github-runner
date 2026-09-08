@@ -16,7 +16,7 @@ REPO = Path(__file__).resolve().parent.parent
 FAKE_VALUES = {
     "RUNNER_REGISTRATION_TOKEN": "ABCD1234fake_token_for_test",
     "GITHUB_REPOSITORY": "octo-org/example-repo",
-    "RUNNER_NAME": "ci-runner-amd64-spot-1787310000-1234",
+    "SPOT_RUNNER_NAME": "ci-runner-amd64-spot-1787310000-1234",
     "RUNNER_VERSION": "2.330.0",
     "WATCHDOG_STOP_WINDOW_SECONDS": "90",
     "HTTP_PROXY": "http://proxy.example.com:8080",
@@ -84,3 +84,36 @@ def test_generate_user_data_injection_contract(tmp_path):
         check=False,
     )
     assert syntax.returncode == 0, f"rendered user-data failed bash -n: {syntax.stderr}"
+
+
+def test_injected_runner_name_does_not_win(tmp_path):
+    """A self-hosted host's own RUNNER_NAME must not reach the new instance.
+
+    The Actions runner injects RUNNER_NAME into every step with the name of the
+    agent executing the job. If the generator read that, the instance would
+    register under the host agent's name and config.sh --replace would take
+    over its registration. The name travels as SPOT_RUNNER_NAME for that
+    reason; this locks the precedence in.
+    """
+    env = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "HOME": str(tmp_path),
+        "TEMPLATE_FILE": str(REPO / "templates" / "user-data.sh"),
+        **FAKE_VALUES,
+        "RUNNER_NAME": "host-agent-do-not-use",
+    }
+    result = subprocess.run(
+        ["bash", str(REPO / "scripts" / "generate-user-data.sh")],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, f"generator failed: {result.stderr}"
+    assert FAKE_VALUES["SPOT_RUNNER_NAME"] in result.stdout, (
+        "SPOT_RUNNER_NAME must be the name injected into the template"
+    )
+    assert "host-agent-do-not-use" not in result.stdout, (
+        "an injected RUNNER_NAME must never reach the rendered user-data"
+    )
