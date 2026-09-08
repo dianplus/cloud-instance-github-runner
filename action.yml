@@ -227,6 +227,13 @@ runs:
             owner: context.repo.owner,
             repo: context.repo.repo,
           });
+          // Register the token as a secret before returning it. A value minted
+          // at run time is not one of the workflow's configured secrets, so
+          // nothing masks it: every later step that takes it through `env:`
+          // prints it in clear text in the job log. A repository registration
+          // token is enough to attach a self-hosted runner to this repository
+          // and stays valid for an hour.
+          core.setSecret(response.data.token);
           return response.data.token;
         result-encoding: string
 
