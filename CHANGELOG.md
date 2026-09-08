@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Renamed the env var carrying the new instance's runner name to SPOT_RUNNER_NAME. RUNNER_NAME is injected into every step by the Actions runner with the host agent's own name and cannot be overridden at step level, so on a self-hosted runner the instance registered under the host agent name and config.sh --replace took over its registration
+- Moved the action's scratch files (user-data, instance id, error log, console log) from fixed /tmp names to RUNNER_TEMP. Several runner agents on one self-hosted host share /tmp, so two concurrent jobs overwrote each other's user-data and one instance booted with the other job's runner name and labels
 - Masked the base64 derived form of the registration token as well: the Create Spot Instance step's env banner prints USER_DATA_B64 verbatim and setSecret only masks the exact raw string, so a decodable copy of the token reached the job log; the generate step now registers the b64 value with ::add-mask:: (companion to the core.setSecret fix; empirically confirmed against a pre-fix run's log archive)
 - Removed the dead `export DEBUG=true` from the create step (no consumer in scripts/ or templates/)
 - Masked the runner registration token with core.setSecret. A token minted at run time is not one of the workflow's configured secrets, so nothing masked it: every later step that carried it through `env:` printed it in clear text in the job log (the step-start banner lists resolved env values), and the token is enough to attach a self-hosted runner to this repository for an hour
@@ -26,7 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Corrected the stale stop-window texts left by the v1.1 revision: both READMEs' troubleshooting now says 24 probes / 2min, the postmortem carries superseded-by-v1.2 notes, and the watchdog-hardening blueprint's forensics-race arithmetic, AC-9 granularity note and Rollout expectations match the shipped 24x5s default
 - Widened the watchdog stop verdict from 6 to 24 consecutive confirmed-inactive probes (30s to 2min). A runner older than the version GitHub serves self-updates when a job arrives, and the service restart could outlast the 30s window, so the watchdog destroyed the instance mid-job (blueprint watchdog-hardening v1.1)
 - Disabled unattended-upgrades and the apt-daily timers on the instance. The automatic security upgrade restarted systemd-resolved a few minutes into the instance's life, and every DNS lookup during those seconds failed with connection refused, surfacing as random network errors inside the job
-
 ## [1.5.1] - 2026-09-04
 
 ### Added

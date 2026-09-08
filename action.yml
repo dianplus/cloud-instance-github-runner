@@ -475,33 +475,45 @@ runs:
         ALIYUN_VSWITCH_ID_Z: ${{ inputs.vswitch_id_z }}
         USER_DATA_B64: ${{ steps.user-data.outputs.user_data_b64 }}
       run: |
-        python3 ${{ github.action_path }}/scripts/write_user_data.py /tmp/user-data.sh
-        export USER_DATA_FILE=/tmp/user-data.sh
-        python3 ${{ github.action_path }}/scripts/create_spot_instance.py > /tmp/instance-id.txt 2> /tmp/aliyun-error.log || {
+        # Scratch files must not use fixed /tmp names. One self-hosted host
+        # runs several runner agents sharing one /tmp, so two jobs reaching
+        # this step in the same second write the same user-data.sh and the
+        # second one wins for both: the instance created by the losing job
+        # boots with the other job's runner name and labels, and that job then
+        # waits for a name that never appears. RUNNER_TEMP is per agent, and
+        # is emptied at the beginning and end of each job (files the runner's
+        # user account lacks permission to delete survive -- not a collision
+        # concern, but stale-file artifacts can). A hosted runner owns the
+        # whole machine, which is why the fixed names never showed the problem
+        # there.
+        WORK="${RUNNER_TEMP:-/tmp}"
+        python3 ${{ github.action_path }}/scripts/write_user_data.py "${WORK}/user-data.sh"
+        export USER_DATA_FILE="${WORK}/user-data.sh"
+        python3 ${{ github.action_path }}/scripts/create_spot_instance.py > "${WORK}/instance-id.txt" 2> "${WORK}/aliyun-error.log" || {
           EXIT_CODE=$?
           echo "Error: Failed to create instance (exit code: ${EXIT_CODE})"
           echo "=== Error Output ==="
-          cat /tmp/aliyun-error.log
+          cat "${WORK}/aliyun-error.log"
           echo "=== Standard Output ==="
-          cat /tmp/instance-id.txt
+          cat "${WORK}/instance-id.txt"
           exit ${EXIT_CODE}
         }
         EXIT_CODE=$?
         if [[ ${EXIT_CODE} -ne 0 ]]; then
           echo "Error: Failed to create instance (exit code: ${EXIT_CODE})"
           echo "=== Error Output ==="
-          cat /tmp/aliyun-error.log
+          cat "${WORK}/aliyun-error.log"
           echo "=== Standard Output ==="
-          cat /tmp/instance-id.txt
+          cat "${WORK}/instance-id.txt"
           exit ${EXIT_CODE}
         fi
-        INSTANCE_ID=$(cat /tmp/instance-id.txt | tail -1)
+        INSTANCE_ID=$(cat "${WORK}/instance-id.txt" | tail -1)
         if [[ -z "${INSTANCE_ID}" ]]; then
           echo "Error: Failed to extract instance ID"
           echo "=== Standard Output ==="
-          cat /tmp/instance-id.txt
+          cat "${WORK}/instance-id.txt"
           echo "=== Error Output ==="
-          cat /tmp/aliyun-error.log
+          cat "${WORK}/aliyun-error.log"
           exit 1
         fi
         echo "instance_id=${INSTANCE_ID}" >> $GITHUB_OUTPUT
@@ -532,7 +544,7 @@ runs:
         ALIYUN_ACCESS_KEY_SECRET: ${{ inputs.aliyun_access_key_secret }}
         ALIYUN_REGION_ID: ${{ inputs.aliyun_region_id }}
         INSTANCE_ID: ${{ steps.create-instance.outputs.instance_id }}
-        CONSOLE_LOG_FILE: /tmp/instance-console.log
+        CONSOLE_LOG_FILE: ${{ runner.temp }}/instance-console.log
       run: |
         if [[ -n "${INSTANCE_ID}" ]]; then
           # Forensics before destruction: the console output only survives
@@ -549,5 +561,5 @@ runs:
         # When creation never produced an instance ID, GitHub renders an
         # empty string here; if-no-files-found: ignore keeps that harmless.
         name: instance-console-${{ steps.create-instance.outputs.instance_id }}
-        path: /tmp/instance-console.log
+        path: ${{ runner.temp }}/instance-console.log
         if-no-files-found: ignore

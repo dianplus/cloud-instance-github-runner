@@ -32,7 +32,10 @@ ALIYUN_ACCESS_KEY_ID="${ALIYUN_ACCESS_KEY_ID:-}"
 ALIYUN_ACCESS_KEY_SECRET="${ALIYUN_ACCESS_KEY_SECRET:-}"
 ALIYUN_REGION_ID="${ALIYUN_REGION_ID:-}"
 INSTANCE_ID="${INSTANCE_ID:-}"
-CONSOLE_LOG_FILE="${CONSOLE_LOG_FILE:-/tmp/instance-console.log}"
+# Default under RUNNER_TEMP, not a fixed /tmp name: several runner agents on
+# one self-hosted host share /tmp, and two concurrent jobs would otherwise
+# fetch into the same file.
+CONSOLE_LOG_FILE="${CONSOLE_LOG_FILE:-${RUNNER_TEMP:-/tmp}/instance-console.log}"
 
 # If no instance ID, there is nothing to fetch (e.g. creation failed before
 # an instance ID existed).
