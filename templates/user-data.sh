@@ -89,6 +89,19 @@ else
   echo "Proxy configuration not provided, using direct connection"
 fi
 
+# Disable the automatic security upgrade before installing anything. The Ubuntu
+# cloud image runs unattended-upgrades a few minutes after boot; upgrading libc
+# or systemd restarts systemd-resolved and systemd-networkd, and resolv.conf
+# points at the 127.0.0.53 stub, so every DNS lookup made during those seconds
+# fails with connection refused. The job sees a network error from whatever it
+# happened to be doing, which reads as flakiness rather than as a scheduled
+# task. An instance that is deleted after one job has nothing to gain from
+# being patched, and disabling the timers also keeps the upgrade from competing
+# for the dpkg lock with the package installs below.
+echo "=== Disabling unattended upgrades (ephemeral instance, patching has no value here) ==="
+systemctl disable --now unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer > /dev/null 2>&1 || true
+systemctl stop apt-daily.service apt-daily-upgrade.service > /dev/null 2>&1 || true
+
 # Update system
 echo "=== Updating system ==="
 if command -v yum &> /dev/null; then

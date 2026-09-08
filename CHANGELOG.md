@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Widened the watchdog stop verdict from 6 to 24 consecutive confirmed-inactive probes (30s to 2min). A runner older than the version GitHub serves self-updates when a job arrives, and the service restart could outlast the 30s window, so the watchdog destroyed the instance mid-job (blueprint watchdog-hardening v1.1)
+- Disabled unattended-upgrades and the apt-daily timers on the instance. The automatic security upgrade restarted systemd-resolved a few minutes into the instance's life, and every DNS lookup during those seconds failed with connection refused, surfacing as random network errors inside the job
 
 ## [1.5.1] - 2026-09-04
 
