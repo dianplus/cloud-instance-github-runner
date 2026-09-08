@@ -132,8 +132,10 @@ def test_cleanup_captures_console_output_before_deletion():
     # Outer-review Note-4: the CONSOLE_LOG_FILE env literal and the upload
     # path literal must be exactly equal -- two hand-maintained copies that
     # can silently drift.
-    env_match = re.search(r"(?im)^\s*CONSOLE_LOG_FILE:\s*(\S+)", "\n".join(cleanup_block))
-    path_match = re.search(r"(?im)^\s*path:\s*(\S+)", "\n".join(upload_block))
+    env_match = re.search(
+        r"(?im)^[ \t]*CONSOLE_LOG_FILE:[ \t]*(.+?)[ \t]*$", "\n".join(cleanup_block)
+    )
+    path_match = re.search(r"(?im)^[ \t]*path:[ \t]*(.+?)[ \t]*$", "\n".join(upload_block))
     assert env_match and path_match, (
         "AC-4: cleanup step must set CONSOLE_LOG_FILE env and the upload step "
         "must declare with.path; blocks:\n"
