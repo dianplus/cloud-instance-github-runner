@@ -403,3 +403,24 @@ def test_readme_stop_window_docs_synced():
         assert re.search(r"\| `runner_version_source`", doc), (
             f"pi AC-6: {label} must document the new runner_version_source output row"
         )
+
+
+def test_user_data_b64_masked_and_no_dead_debug():
+    # PR #3 companion: the Create step's env banner prints
+    # USER_DATA_B64 verbatim; setSecret on the raw token cannot mask the
+    # decodable derived form -- the generate step must register it with
+    # ::add-mask:: BEFORE the create step runs.
+    gen_idx = _line_index_of("- name: Generate User Data")
+    assert gen_idx is not None
+    mask_line = _line_index_of('echo "::add-mask::${USER_DATA_B64}"')
+    out_line = _line_index_of('echo "user_data_b64=${USER_DATA_B64}" >> $GITHUB_OUTPUT')
+    assert mask_line is not None, (
+        "pr3 companion: generate step must emit ::add-mask:: for USER_DATA_B64"
+    )
+    assert out_line is not None and mask_line < out_line, (
+        "pr3 companion: the mask registration must precede the output write"
+    )
+    # dead DEBUG export must stay gone
+    assert "export DEBUG=true" not in ACTION_YML_TEXT, (
+        "pr3 companion: the dead `export DEBUG=true` must not reappear (zero consumers)"
+    )

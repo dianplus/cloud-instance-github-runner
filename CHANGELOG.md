@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Masked the base64 derived form of the registration token as well: the Create Spot Instance step's env banner prints USER_DATA_B64 verbatim and setSecret only masks the exact raw string, so a decodable copy of the token reached the job log; the generate step now registers the b64 value with ::add-mask:: (companion to the core.setSecret fix; empirically confirmed against a pre-fix run's log archive)
+- Removed the dead `export DEBUG=true` from the create step (no consumer in scripts/ or templates/)
 - Masked the runner registration token with core.setSecret. A token minted at run time is not one of the workflow's configured secrets, so nothing masked it: every later step that carried it through `env:` printed it in clear text in the job log (the step-start banner lists resolved env values), and the token is enough to attach a self-hosted runner to this repository for an hour
 - Replaced the bootstrap "Updating system" block with guarded install-on-missing for curl/git only: no more `yum update -y` full upgrade (pure cost on a single-job instance) and no unconditional `apt-get update`; the unattended-upgrades disable moved inside an apt-family guard so yum-family images no longer run a no-op with a misleading banner
 - Corrected the stale stop-window texts left by the v1.1 revision: both READMEs' troubleshooting now says 24 probes / 2min, the postmortem carries superseded-by-v1.2 notes, and the watchdog-hardening blueprint's forensics-race arithmetic, AC-9 granularity note and Rollout expectations match the shipped 24x5s default
