@@ -1,0 +1,143 @@
+name: Image Auto-Update Probe
+
+# One-off empirical probe (discussion support for PR #2 review): boot real
+# instances from the image families this action provisions, dump what
+# auto-update machinery (unattended-upgrades / apt-daily / dnf-automatic /
+# yum-cron / vendor agents) actually exists on the pristine image, read the
+# result from the serial console, then delete the instances.
+#
+# No public IP, no runner registration, no key pair — pure observation.
+# AutoReleaseTime is the billing backstop; the workflow also deletes
+# explicitly in an always() step.
+
+on:
+  workflow_dispatch:
+    inputs:
+      wait_seconds:
+        description: "Seconds to wait before reading the serial console"
+        type: number
+        default: 480
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Install Aliyun CLI (official binary, no third-party action)
+        env:
+          ALIYUN_AK: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIYUN_SK: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+        run: |
+          set -euo pipefail
+          # Same source as templates/user-data.sh:135 — official Aliyun CDN.
+          curl -fsSL -o aliyun-cli.tgz https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz
+          tar -xzf aliyun-cli.tgz
+          sudo install aliyun /usr/local/bin/aliyun
+          rm -f aliyun aliyun-cli.tgz
+          aliyun configure set --profile default --mode AK \
+            --access-key-id "$ALIYUN_AK" --access-key-secret "$ALIYUN_SK" \
+            --region cn-hangzhou
+          aliyun version
+
+      - name: Resolve latest images and launch probes
+        id: launch
+        env:
+          VSWITCH_ID: ${{ vars.ALIYUN_VSWITCH_ID_B }}
+          SECURITY_GROUP_ID: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
+          WAIT_SECONDS: ${{ inputs.wait_seconds }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/probe.sh <<'PROBE'
+          #!/bin/bash
+          exec > /dev/console 2>&1
+          echo "=====DIAG-EARLY $(date -u +%FT%TZ)====="
+          grep PRETTY /etc/os-release
+          cat /etc/cloud/build.info 2>/dev/null
+          echo "--- enabled auto-update units ---"
+          for u in unattended-upgrades apt-daily.timer apt-daily-upgrade.timer \
+                   dnf-automatic.timer dnf-automatic-install.timer yum-cron crond; do
+            printf '%s: ' "$u"; systemctl is-enabled "$u" 2>&1 | head -1
+          done
+          echo "--- auto-update conf ---"
+          cat /etc/apt/apt.conf.d/20auto-upgrades 2>/dev/null || echo "no 20auto-upgrades"
+          grep -r "APT::Periodic" /etc/apt/apt.conf.d/ 2>/dev/null || true
+          grep -rs "apply_updates" /etc/dnf/automatic.conf /etc/sysconfig/dnf-automatic 2>/dev/null || true
+          echo "--- timers ---"
+          systemctl list-timers --all --no-pager | grep -Ei 'apt|unattended|dnf|yum|packagekit' || echo none
+          echo "--- pkg present ---"
+          (dpkg -l unattended-upgrades 2>/dev/null | tail -1) || rpm -qa | grep -Ei 'yum-cron|dnf-automatic|unattended' || echo none
+          echo "--- cron ---"
+          ls /etc/cron.d /etc/cron.daily 2>/dev/null || true
+          echo "--- aliyun agents ---"
+          systemctl list-units --no-pager | grep -Ei 'aliyun|aegis|assist|cloudmonitor|yunjing' || echo none
+          echo "--- journal auto-update since boot ---"
+          journalctl -b --no-pager | grep -Ei 'apt-daily|unattended|apt.systemd|dnf.automatic|yum-cron' | tail -20 || true
+          echo "=====DIAG-EARLY-END====="
+          nohup bash -c 'sleep 270; { echo "=====DIAG-LATE $(date -u +%FT%TZ)====="; systemctl list-timers --all --no-pager | grep -Ei "apt|unattended|dnf|yum" || true; journalctl -b --no-pager | grep -Ei "apt-daily|unattended|apt.systemd|Unattended-Upgrade|dnf.automatic|yum-cron|dpkg" | tail -40 || true; systemctl status unattended-upgrades --no-pager 2>&1 | head -8; echo "=====DIAG-LATE-END====="; } > /dev/console 2>&1' >/dev/null 2>&1 &
+          PROBE
+          # aliyun CLI heredoc-safe: strip leading indentation, base64
+          sed -i 's/^          //' /tmp/probe.sh
+          UD_B64=$(base64 -w0 /tmp/probe.sh)
+          AUTO_REL=$(date -u -d '+25 minutes' '+%Y-%m-%dT%H:%M:%SZ')
+          launch() {
+            local family="$1" label="$2"
+            local img
+            img=$(aliyun ecs DescribeImages --RegionId cn-hangzhou \
+                    --ImageFamily "$family" | jq -r '.Images.Image[0].ImageId')
+            if [[ -z "$img" || "$img" == "null" ]]; then
+              echo "::warning::no image found for family $family"
+              echo ""
+              return 0
+            fi
+            echo "family=$family image=$img" >&2
+            local out id
+            out=$(aliyun ecs RunInstances --RegionId cn-hangzhou \
+              --ImageId "$img" --InstanceType ecs.e-c1-m1.large \
+              --SecurityGroupId "$SECURITY_GROUP_ID" --VSwitchId "$VSWITCH_ID" \
+              --UserData "$UD_B64" --InstanceChargeType PostPaid \
+              --InternetMaxBandwidthOut 0 \
+              --SystemDisk.Category cloud_essd --SystemDisk.Size 40 \
+              --AutoReleaseTime "$AUTO_REL" \
+              --Amount 1)
+            id=$(echo "$out" | jq -r '.InstanceIdSets.InstanceIdSet[0] // empty')
+            echo "$id"
+          }
+          UBUNTU_ID=$(launch "acs:ubuntu_24_04_x64" ubuntu)
+          ALINUX_ID=$(launch "acs:alinux_3_x64" alinux)
+          {
+            echo "ubuntu_id=$UBUNTU_ID"
+            echo "alinux_id=$ALINUX_ID"
+          } >> "$GITHUB_OUTPUT"
+          echo "launched: ubuntu=$UBUNTU_ID alinux=$ALINUX_ID"
+
+      - name: Wait for probe window
+        run: sleep "${{ inputs.wait_seconds }}"
+
+      - name: Read serial console output
+        if: always()
+        env:
+          UBUNTU_ID: ${{ steps.launch.outputs.ubuntu_id }}
+          ALINUX_ID: ${{ steps.launch.outputs.alinux_id }}
+        run: |
+          read_console() {
+            local id="$1" label="$2"
+            [[ -z "$id" ]] && { echo "=== $label: no instance ==="; return 0; }
+            echo "=== $label ($id) console ==="
+            aliyun ecs DescribeInstanceConsoleOutput --RegionId cn-hangzhou \
+              --InstanceId "$id" | jq -r '.ConsoleOutput // empty' | base64 -d \
+              | sed -n '/=====DIAG-EARLY/,/=====DIAG-LATE-END=====/p' || true
+          }
+          read_console "$UBUNTU_ID" "ubuntu-24.04-x64"
+          read_console "$ALINUX_ID" "alinux-3-x64"
+
+      - name: Delete probe instances
+        if: always()
+        env:
+          UBUNTU_ID: ${{ steps.launch.outputs.ubuntu_id }}
+          ALINUX_ID: ${{ steps.launch.outputs.alinux_id }}
+        run: |
+          for id in "$UBUNTU_ID" "$ALINUX_ID"; do
+            [[ -z "$id" ]] && continue
+            aliyun ecs DeleteInstance --RegionId cn-hangzhou --InstanceId "$id" --Force true || true
+            echo "deleted $id"
+          done
