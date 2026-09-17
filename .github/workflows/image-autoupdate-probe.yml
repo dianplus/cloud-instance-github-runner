@@ -11,12 +11,8 @@ name: Image Auto-Update Probe
 # explicitly in an always() step.
 
 on:
-  workflow_dispatch:
-    inputs:
-      wait_seconds:
-        description: "Seconds to wait before reading the serial console"
-        type: number
-        default: 480
+  push:
+    branches: [probe/image-autoupdate]
 
 jobs:
   probe:
