@@ -73,7 +73,7 @@ jobs:
           # aliyun CLI heredoc-safe: strip leading indentation, base64
           sed -i 's/^          //' /tmp/probe.sh
           UD_B64=$(base64 -w0 /tmp/probe.sh)
-          AUTO_REL=$(date -u -d '+25 minutes' '+%Y-%m-%dT%H:%M:%SZ')
+          AUTO_REL=$(date -u -d '+45 minutes' '+%Y-%m-%dT%H:%M:%SZ')
           launch() {
             local img="$1" label="$2"
             if [[ -z "$img" || "$img" == "null" ]]; then
@@ -109,8 +109,9 @@ jobs:
           UBUNTU_IMG=$(aliyun ecs DescribeImages --RegionId cn-hangzhou \
             --ImageFamily "acs:ubuntu_24_04_x64" | jq -r '.Images.Image[0].ImageId')
           ALINUX_IMG=$(aliyun ecs DescribeImages --RegionId cn-hangzhou \
-            --OSType linux --ImageOwnerAlias system \
-            | jq -r '[.Images.Image[] | select(.OSName | test("Alibaba Cloud Linux 3"))] | sort_by(.CreationDate) | last | .ImageId')
+            --OSType linux --ImageOwnerAlias system --OSName "Alibaba Cloud Linux 3*" \
+            --PageSize 50 --SortBy CreationDate --SortOrder Desc \
+            | jq -r '.Images.Image[0].ImageId')
           echo "images: ubuntu=$UBUNTU_IMG alinux=$ALINUX_IMG" >&2
           UBUNTU_ID=$(launch "$UBUNTU_IMG" ubuntu)
           ALINUX_ID=$(launch "$ALINUX_IMG" alinux)
