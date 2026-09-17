@@ -75,30 +75,45 @@ jobs:
           UD_B64=$(base64 -w0 /tmp/probe.sh)
           AUTO_REL=$(date -u -d '+25 minutes' '+%Y-%m-%dT%H:%M:%SZ')
           launch() {
-            local family="$1" label="$2"
-            local img
-            img=$(aliyun ecs DescribeImages --RegionId cn-hangzhou \
-                    --ImageFamily "$family" | jq -r '.Images.Image[0].ImageId')
+            local img="$1" label="$2"
             if [[ -z "$img" || "$img" == "null" ]]; then
-              echo "::warning::no image found for family $family"
-              echo ""
+              echo "::warning::no image for $label" >&2
               return 0
             fi
-            echo "family=$family image=$img" >&2
             local out id
             out=$(aliyun ecs RunInstances --RegionId cn-hangzhou \
-              --ImageId "$img" --InstanceType ecs.e-c1-m1.large \
+              --ImageId "$img" --InstanceType "$PROBE_TYPE" \
               --SecurityGroupId "$SECURITY_GROUP_ID" --VSwitchId "$VSWITCH_ID" \
               --UserData "$UD_B64" --InstanceChargeType PostPaid \
               --InternetMaxBandwidthOut 0 \
               --SystemDisk.Category cloud_essd --SystemDisk.Size 40 \
               --AutoReleaseTime "$AUTO_REL" \
-              --Amount 1)
-            id=$(echo "$out" | jq -r '.InstanceIdSets.InstanceIdSet[0] // empty')
+              --Amount 1 2>&1)
+            if ! id=$(echo "$out" | jq -r '.InstanceIdSets.InstanceIdSet[0] // empty' 2>/dev/null) || [[ -z "$id" ]]; then
+              echo "::error::$label RunInstances failed: $(echo "$out" | head -5)" >&2
+              return 0
+            fi
             echo "$id"
           }
-          UBUNTU_ID=$(launch "acs:ubuntu_24_04_x64" ubuntu)
-          ALINUX_ID=$(launch "acs:alinux_3_x64" alinux)
+          # Pick a type actually permitted in this zone instead of guessing.
+          PROBE_TYPE=""
+          ZONE_TYPES=$(aliyun ecs DescribeZones --RegionId cn-hangzhou \
+            | jq -r '.Zones.Zone[] | select(.ZoneId == "cn-hangzhou-b") | .AvailableInstanceTypes.InstanceTypes[]')
+          for t in ecs.e-c1m1.large ecs.t6-c1m1.large ecs.c5.large ecs.u1-c1m1.large ecs.c8i.large ecs.g6.large; do
+            if grep -qx "$t" <<< "$ZONE_TYPES"; then PROBE_TYPE="$t"; break; fi
+          done
+          if [[ -z "$PROBE_TYPE" ]]; then
+            PROBE_TYPE=$(grep -E '^ecs\.(e|t|s)[a-z0-9-]*\.(small|large)$' <<< "$ZONE_TYPES" | head -1 || true)
+          fi
+          echo "probe type: ${PROBE_TYPE:-UNRESOLVED}" >&2
+          UBUNTU_IMG=$(aliyun ecs DescribeImages --RegionId cn-hangzhou \
+            --ImageFamily "acs:ubuntu_24_04_x64" | jq -r '.Images.Image[0].ImageId')
+          ALINUX_IMG=$(aliyun ecs DescribeImages --RegionId cn-hangzhou \
+            --OSType linux --ImageOwnerAlias system \
+            | jq -r '[.Images.Image[] | select(.OSName | test("Alibaba Cloud Linux 3"))] | sort_by(.CreationDate) | last | .ImageId')
+          echo "images: ubuntu=$UBUNTU_IMG alinux=$ALINUX_IMG" >&2
+          UBUNTU_ID=$(launch "$UBUNTU_IMG" ubuntu)
+          ALINUX_ID=$(launch "$ALINUX_IMG" alinux)
           {
             echo "ubuntu_id=$UBUNTU_ID"
             echo "alinux_id=$ALINUX_ID"
