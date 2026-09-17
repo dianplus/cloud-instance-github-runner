@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [1.6.0] - 2026-09-18
+
+### Added
+
 - New `watchdog_stop_window_seconds` input: max seconds of continuous runner inactivity before self-destruct (any active probe resets it). Unset keeps the watchdog default (24 probes = 2min) and preserves any image-pre-baked STOP_CONFIRMATIONS_REQUIRED; setting it overrides both, replacing hand-edits to /etc/environment (blueprint pr2-intervention v1.1). New `runner_version` / `runner_version_source` outputs expose what the resolve step actually shipped
 
 ### Changed
