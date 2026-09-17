@@ -250,3 +250,156 @@ def test_spot_strategy_input_and_env_wiring():
         "still drive ranking and the candidates file); "
         "step block:\n" + "\n".join(select_block)
     )
+
+
+# ---------------------------------------------------------------------------
+# pr2-intervention-v1 (AC-4/AC-5/AC-6): auto-latest runner version with a
+# proxy-scoped probe, watchdog window input, README/doc sync.
+# ---------------------------------------------------------------------------
+
+README_PATH = ACTION_YML_PATH.parent / "README.md"
+README_CN_PATH = ACTION_YML_PATH.parent / "README.cn.md"
+
+
+def test_runner_version_resolve_step_wiring():
+    # pi AC-4: a Resolve Runner Version step must exist with the proxy env
+    # trio (the probe runs INSIDE the proxy scope or VPC-hosted agents can
+    # never reach github.com), redirect-based tag extraction, a loud
+    # ::warning:: fallback, and its output consumed by the user-data step.
+    step_idx = _line_index_of("- name: Resolve Runner Version")
+    assert step_idx is not None, "pi AC-4: 'Resolve Runner Version' step not declared"
+
+    step_block = "\n".join(ACTION_YML_LINES[step_idx : step_idx + 60])
+    for env_key in ("http_proxy:", "https_proxy:", "no_proxy:"):
+        assert env_key in step_block, (
+            f"pi AC-4: the resolve step env must carry {env_key} (proxy scope)"
+        )
+    assert "releases/latest" in step_block and "-fsSI" in step_block, (
+        "pi AC-4: the probe must be a HEAD against the releases/latest redirect"
+    )
+    assert re.search(r"::warning::", step_block), (
+        "pi AC-4: probe failure must degrade LOUDLY (::warning::) before falling back"
+    )
+    assert "RUNNER_FALLBACK_VERSION" in step_block, (
+        "pi AC-4: the fallback constant must be consumed by the resolve step"
+    )
+    assert 'echo "version=' in step_block, "pi AC-4: the step must write the version= output"
+    assert len(re.findall(r'if ! LATEST="\$', step_block)) == 2, (
+        "pi AC-4: BOTH probe attempts must be guarded (if ! LATEST=...) -- composite "
+        "steps run bash -eo pipefail and an unguarded failing pipeline aborts the step "
+        "before the fallback branch (dead-code degradation)"
+    )
+    assert "--noproxy '*'" in step_block, (
+        "pi AC-4: the direct retry attempt (--noproxy '*') is missing -- a VPC-internal "
+        "proxy is unreachable from GitHub-hosted setup runners and would poison the probe"
+    )
+    assert "INPUT_RUNNER_VERSION" in step_block, (
+        "pi AC-4: the pin must be read through env (INPUT_RUNNER_VERSION), not interpolated"
+    )
+    run_body = step_block.split("run: |", 1)[-1] if "run: |" in step_block else step_block
+    assert "${{ inputs.runner_version }}" not in run_body, (
+        "pi AC-4: caller-controlled input must never be interpolated into the script "
+        "body (env wiring in the env: block is the required route)"
+    )
+    for src in ("source=pin", "source=latest", "source=fallback"):
+        assert src in step_block, f"pi AC-4: resolve step must emit {src} for provenance"
+
+    gen_idx = _line_index_of("- name: Generate User Data")
+    assert gen_idx is not None
+    gen_block = "\n".join(ACTION_YML_LINES[gen_idx : gen_idx + 15])
+    assert "steps.runner-version.outputs.version" in gen_block, (
+        "pi AC-4: the user-data step must consume steps.runner-version.outputs.version"
+    )
+    assert "inputs.runner_version" not in gen_block, (
+        "pi AC-4: the raw input must not flow into user-data (resolve step owns the default)"
+    )
+
+    # The input itself must have NO default (empty path must be reachable).
+    decl = re.search(r"\n  runner_version:\n(.*?)(?=\n  [a-z_]+:)", ACTION_YML_TEXT, re.DOTALL)
+    assert decl is not None, "pi AC-4: runner_version input not declared"
+    assert not re.search(r"default:\s*\"", decl.group(1)), (
+        "pi AC-4: runner_version must declare no default -- the resolve step "
+        "owns the empty path (pinned/latest/fallback)"
+    )
+
+    # The watchdog window input must exist with NO default (unset must stay
+    # reachable so the image pre-baked escape hatch survives) and reach user-data.
+    win_decl = re.search(
+        r"\n  watchdog_stop_window_seconds:\n(.*?)(?=\n  [a-z_]+:)", ACTION_YML_TEXT, re.DOTALL
+    )
+    assert win_decl is not None, "pi AC-5: watchdog_stop_window_seconds input not declared"
+    assert not re.search(r"default\s*:", win_decl.group(1)), (
+        "pi AC-5: watchdog_stop_window_seconds must declare NO default -- with a "
+        "default, unset is unreachable and the action silently overrides any "
+        "STOP_CONFIRMATIONS_REQUIRED pre-baked into a custom image"
+    )
+    assert re.search(r"(?i)max seconds of continuous", win_decl.group(1)), (
+        "pi AC-5: the input description must state the max-window semantics"
+    )
+    assert (
+        "WATCHDOG_STOP_WINDOW_SECONDS: ${{ inputs.watchdog_stop_window_seconds }}" in gen_block
+    ), "pi AC-5: the user-data step env must inject the window input"
+
+
+def test_no_pinned_runner_version_literals():
+    # pi AC-4: the stale pin must be gone from all three sites (input
+    # default, template fallback, generator sed pattern); the ONLY sanctioned
+    # literal is the RUNNER_FALLBACK_VERSION declaration line.
+    allowed = re.compile(r"RUNNER_FALLBACK_VERSION", re.IGNORECASE)
+    version_literal = re.compile(r"\b2\.\d{3}\.\d+\b")
+
+    for label, text in (
+        ("action.yml", ACTION_YML_TEXT),
+        (
+            "templates/user-data.sh",
+            (ACTION_YML_PATH.parent / "templates" / "user-data.sh").read_text(),
+        ),
+        (
+            "scripts/generate-user-data.sh",
+            (ACTION_YML_PATH.parent / "scripts" / "generate-user-data.sh").read_text(),
+        ),
+    ):
+        for idx, line in enumerate(text.splitlines(), start=1):
+            if version_literal.search(line) and not allowed.search(line):
+                raise AssertionError(
+                    f"pi AC-4: stale runner-version literal in {label}:{idx}: {line.strip()}"
+                )
+
+    fallback_sites = re.findall(r"RUNNER_FALLBACK_VERSION:\s*\"(\d+\.\d+\.\d+)\"", ACTION_YML_TEXT)
+    assert len(fallback_sites) == 1, (
+        f"pi AC-4: the RUNNER_FALLBACK_VERSION constant must be declared at exactly ONE "
+        f"site; found {len(fallback_sites)}"
+    )
+
+
+def test_readme_stop_window_docs_synced():
+    # pi AC-6: both READMEs document the new stop-verdict window (24/2min,
+    # replacing the stale 6), carry the new input row, describe the
+    # auto-latest runner_version semantics, and state the 420 default.
+    readme = README_PATH.read_text(encoding="utf-8")
+    readme_cn = README_CN_PATH.read_text(encoding="utf-8")
+
+    assert "24 consecutive inactive probes" in readme, (
+        "pi AC-6: README.md troubleshooting must say 24 consecutive inactive probes"
+    )
+    assert "24 次连续 inactive 探测" in readme_cn, (
+        "pi AC-6: README.cn.md troubleshooting must carry the exact 24-probe window prose"
+    )
+    for doc, label in ((readme, "README.md"), (readme_cn, "README.cn.md")):
+        assert "watchdog_stop_window_seconds" in doc, (
+            f"pi AC-6: {label} must document the watchdog_stop_window_seconds input"
+        )
+        assert "runner_version" in doc, f"pi AC-6: {label} must document the runner_version input"
+    assert re.search(r"(?i)max seconds of continuous", readme), (
+        "pi AC-6: README.md must state the max-window semantics for the new input"
+    )
+    for doc, label in ((readme, "README.md"), (readme_cn, "README.cn.md")):
+        assert re.search(r"runner_wait_timeout.*\| `420`", doc, re.DOTALL), (
+            f"pi AC-6: {label} must carry the exact `420` default cell for runner_wait_timeout"
+        )
+        assert re.search(r"watchdog_stop_window_seconds.*unset", doc, re.DOTALL) or re.search(
+            r"watchdog_stop_window_seconds.*未设置", doc, re.DOTALL
+        ), f"pi AC-6: {label} must document the window input's unset semantics (no action default)"
+        assert re.search(r"\| `runner_version_source`", doc), (
+            f"pi AC-6: {label} must document the new runner_version_source output row"
+        )

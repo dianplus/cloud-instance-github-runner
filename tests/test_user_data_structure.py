@@ -430,3 +430,144 @@ def test_watchdog_invalid_confirmations_fails_loudly():
                 f"script ({line!r}); a non-zero exit there loops via "
                 "Restart=on-failure into start-limit (silent dead-man death)"
             )
+
+
+# ---------------------------------------------------------------------------
+# pr2-intervention-v1 (AC-2/AC-3/AC-5): bootstrap package minimalism,
+# apt-guarded unattended disable, watchdog window input plumbing.
+# ---------------------------------------------------------------------------
+
+
+def test_no_bulk_update_at_bootstrap():
+    # pi AC-2: no system-wide package operations at bootstrap -- yum update -y
+    # never appears (pure loss on a single-job ephemeral instance), and
+    # apt-get update appears only as the guarded precondition inside
+    # ensure_cmd's install path, never as a bare top-level command.
+    assert "yum update -y" not in USER_DATA_TEXT, (
+        "pi AC-2: 'yum update -y' must not appear -- full system upgrade at "
+        "bootstrap is pure cost on an instance deleted after one job"
+    )
+    bare_update = re.search(r"^apt-get update", USER_DATA_TEXT, re.MULTILINE)
+    assert bare_update is None, (
+        "pi AC-2: a bare top-level 'apt-get update' survives at line "
+        f"{bare_update.start()}; apt-get update is only legal inside ensure_cmd"
+    )
+    assert "curl wget git" not in USER_DATA_TEXT, (
+        "pi AC-2: the bulk 'curl wget git' install list must be gone (wget has "
+        "zero consumers; curl/git install guarded and individually)"
+    )
+
+
+def test_ensure_cmd_guarded_install_shape():
+    # pi AC-2: ensure_cmd must be command -v-guarded, two package-manager
+    # branches (apt/yum), --no-install-recommends on the apt leg, and be
+    # invoked for exactly curl and git.
+    m = re.search(r"ensure_cmd\(\)\s*\{(.+?)\n\}", USER_DATA_TEXT, re.DOTALL)
+    assert m is not None, "pi AC-2: ensure_cmd() function definition not found"
+    body = m.group(1)
+    assert re.search(r"command -v\s+\"\$cmd\"", body), (
+        "pi AC-2: ensure_cmd must guard with command -v before installing"
+    )
+    assert "apt-get update -qq" in body and "apt-get install -y --no-install-recommends" in body, (
+        "pi AC-2: apt leg must run 'apt-get update -qq' as the immediate "
+        "precondition of install, with --no-install-recommends"
+    )
+    assert re.search(r"yum install -y \"\$cmd\"", body), (
+        "pi AC-2: yum leg (yum-family images) must install the missing command"
+    )
+    assert "dnf" not in body, "pi AC-2: no speculative dnf branch -- alinux' yum is the dnf backend"
+    assert re.search(r"^\s*ensure_cmd curl\s*$", USER_DATA_TEXT, re.MULTILINE), (
+        "pi AC-2: ensure_cmd curl invocation missing"
+    )
+    assert re.search(r"^\s*ensure_cmd git\s*$", USER_DATA_TEXT, re.MULTILINE), (
+        "pi AC-2: ensure_cmd git invocation missing"
+    )
+    # Failure leg must be loud (no supported package manager).
+    assert re.search(r"no supported package manager", body), (
+        "pi AC-2: ensure_cmd must fail loudly when no package manager exists"
+    )
+
+
+def test_unattended_disable_apt_guarded_and_pinned():
+    # pi AC-3: the unattended-upgrades disable lives inside an apt-family
+    # guard (yum-family images run nothing and print no banner), the banner
+    # is honest, and the block sits before the first ensure_cmd call so the
+    # distro updater cannot race the tool installs for the dpkg lock.
+    guard = re.search(
+        r"if command -v apt-get &> /dev/null; then\n(.*?)\nfi",
+        USER_DATA_TEXT,
+        re.DOTALL,
+    )
+    assert guard is not None, "pi AC-3: apt-family guard block not found"
+    block = guard.group(1)
+    assert (
+        "systemctl disable --now unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer"
+        in block
+    ), "pi AC-3: the disable line must live inside the apt guard"
+    assert "systemctl stop apt-daily.service apt-daily-upgrade.service" in block, (
+        "pi AC-3: the stop line must live inside the apt guard"
+    )
+    assert "Disabling unattended upgrades" in block, (
+        "pi AC-3: the banner must be emitted only on the apt path (honest on yum)"
+    )
+    # No bare (column-0) systemctl disable outside a guard.
+    for idx, line in enumerate(USER_DATA_LINES, start=1):
+        if line.startswith("systemctl disable"):
+            raise AssertionError(
+                f"pi AC-3: bare column-0 'systemctl disable' at line {idx} -- "
+                "must be guarded (03-shell-compatibility: command -v)"
+            )
+    disable_idx = first_line_containing("systemctl disable --now unattended-upgrades")
+    ensure_idx = first_line_containing("ensure_cmd curl")
+    assert disable_idx is not None and ensure_idx is not None, (
+        "pi AC-3: disable block or ensure_cmd curl not found"
+    )
+    assert disable_idx < ensure_idx, (
+        "pi AC-3: disable must precede the tool installs (dpkg lock contention)"
+    )
+
+
+def test_watchdog_window_input_plumbing():
+    # pi AC-5: WATCHDOG_STOP_WINDOW_SECONDS arrives via generator injection
+    # (empty default line), is validated as a positive integer, and is
+    # anchored-appended to /etc/environment as STOP_CONFIRMATIONS_REQUIRED
+    # with ceil(seconds/5) arithmetic -- AFTER the EXIT trap (append failure
+    # self-destructs) and BEFORE the AC-9 validation block (action-written
+    # values stay validated). Unset input must leave the key unwritten.
+    assert 'WATCHDOG_STOP_WINDOW_SECONDS="${WATCHDOG_STOP_WINDOW_SECONDS:-}"' in USER_DATA_TEXT, (
+        "pi AC-5: template must carry the empty-default injection line for the window input"
+    )
+    trap_idx = first_line_containing("trap on_user_data_exit EXIT")
+    write_idx = first_line_matching(
+        r'STOP_CONFIRMATIONS_REQUIRED=\$\(\(.*\)\)" >> /etc/environment'
+    )
+    validation_idx = first_line_containing("STOP_CONFIRMATIONS_REQUIRED_RAW=")
+    assert None not in (trap_idx, write_idx, validation_idx), (
+        f"pi AC-5: anchors missing (trap={trap_idx}, write={write_idx}, "
+        f"validation={validation_idx})"
+    )
+    assert trap_idx < write_idx < validation_idx, (
+        "pi AC-5: the /etc/environment write must sit AFTER the EXIT trap and "
+        "BEFORE the AC-9 validation block"
+    )
+    window = "\n".join(USER_DATA_LINES[write_idx - 16 : write_idx + 1])
+    assert re.search(r"10#\$\{WATCHDOG_STOP_WINDOW_SECONDS\} \+ 4\) / 5", window), (
+        "pi AC-5: decimal-safe ceil(seconds/5) arithmetic (10# + (N+4)/5) missing near the write"
+    )
+    assert re.search(r"must be a positive integer", window), (
+        "pi AC-5: positive-integer validation with a loud message missing"
+    )
+    assert re.search(r"\$\{#WATCHDOG_STOP_WINDOW_SECONDS\} -gt 10", window) and re.search(
+        r"10#\$\{WATCHDOG_STOP_WINDOW_SECONDS\} > 86400", window
+    ), (
+        "pi AC-5: length pre-guard + decimal-safe upper bound missing -- the band "
+        "comparison itself wraps at intmax without them (hair-trigger self-destruct)"
+    )
+    assert re.search(r"^\s*exit 1\s*$", window, re.MULTILINE), (
+        "pi AC-5: invalid input must exit non-zero (trap-armed self-destruct)"
+    )
+    # The write itself must be conditional (unset input -> no key written).
+    cond = "\n".join(USER_DATA_LINES[write_idx - 16 : write_idx + 1])
+    assert re.search(r'if \[\[ -n "\$\{WATCHDOG_STOP_WINDOW_SECONDS:-\}" \]\]', cond), (
+        "pi AC-5: the write must be guarded on a non-empty window input"
+    )

@@ -16,6 +16,7 @@ HTTP_PROXY="${HTTP_PROXY:-}"
 HTTPS_PROXY="${HTTPS_PROXY:-}"
 NO_PROXY="${NO_PROXY:-}"
 ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME="${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME:-}"
+WATCHDOG_STOP_WINDOW_SECONDS="${WATCHDOG_STOP_WINDOW_SECONDS:-}"
 
 # Validate required parameters
 if [[ -z "${RUNNER_REGISTRATION_TOKEN}" ]]; then
@@ -44,9 +45,9 @@ USER_DATA=$(cat "${TEMPLATE_FILE}")
 
 # Replace variables (using safer sed replacement, escape special characters)
 # Escape special characters
-RUNNER_REGISTRATION_TOKEN_ESC=$(echo "${RUNNER_REGISTRATION_TOKEN}" | sed 's/[[\.*^$()+?{|]/\\&/g')
-GITHUB_REPOSITORY_ESC=$(echo "${GITHUB_REPOSITORY}" | sed 's/[[\.*^$()+?{|]/\\&/g')
-RUNNER_NAME_ESC=$(echo "${RUNNER_NAME}" | sed 's/[[\.*^$()+?{|]/\\&/g')
+RUNNER_REGISTRATION_TOKEN_ESC=$(echo "${RUNNER_REGISTRATION_TOKEN}" | sed 's/["[[\.*^$()+?{|]/\\&/g')
+GITHUB_REPOSITORY_ESC=$(echo "${GITHUB_REPOSITORY}" | sed 's/["[[\.*^$()+?{|]/\\&/g')
+RUNNER_NAME_ESC=$(echo "${RUNNER_NAME}" | sed 's/["[[\.*^$()+?{|]/\\&/g')
 
 # Replace required variables
 USER_DATA=$(echo "${USER_DATA}" | sed "s|RUNNER_REGISTRATION_TOKEN=\"\${RUNNER_REGISTRATION_TOKEN:-}\"|RUNNER_REGISTRATION_TOKEN=\"${RUNNER_REGISTRATION_TOKEN_ESC}\"|")
@@ -55,32 +56,37 @@ USER_DATA=$(echo "${USER_DATA}" | sed "s|RUNNER_NAME=\"\${RUNNER_NAME:-}\"|RUNNE
 
 # Replace optional variables
 if [[ -n "${RUNNER_LABELS}" ]]; then
-  RUNNER_LABELS_ESC=$(echo "${RUNNER_LABELS}" | sed 's/[[\.*^$()+?{|]/\\&/g')
+  RUNNER_LABELS_ESC=$(echo "${RUNNER_LABELS}" | sed 's/["[[\.*^$()+?{|]/\\&/g')
   USER_DATA=$(echo "${USER_DATA}" | sed "s|RUNNER_LABELS=\"\${RUNNER_LABELS:-}\"|RUNNER_LABELS=\"${RUNNER_LABELS_ESC}\"|")
 fi
 
 if [[ -n "${RUNNER_VERSION}" ]]; then
-  RUNNER_VERSION_ESC=$(echo "${RUNNER_VERSION}" | sed 's/[[\.*^$()+?{|]/\\&/g')
-  USER_DATA=$(echo "${USER_DATA}" | sed "s|RUNNER_VERSION=\"\${RUNNER_VERSION:-2.311.0}\"|RUNNER_VERSION=\"${RUNNER_VERSION_ESC}\"|")
+  RUNNER_VERSION_ESC=$(echo "${RUNNER_VERSION}" | sed 's/["[[\.*^$()+?{|]/\\&/g')
+  USER_DATA=$(echo "${USER_DATA}" | sed "s|RUNNER_VERSION=\"\${RUNNER_VERSION:-}\"|RUNNER_VERSION=\"${RUNNER_VERSION_ESC}\"|")
+fi
+
+if [[ -n "${WATCHDOG_STOP_WINDOW_SECONDS}" ]]; then
+  WATCHDOG_STOP_WINDOW_SECONDS_ESC=$(echo "${WATCHDOG_STOP_WINDOW_SECONDS}" | sed 's/["[[\.*^$()+?{|]/\\&/g')
+  USER_DATA=$(echo "${USER_DATA}" | sed "s|WATCHDOG_STOP_WINDOW_SECONDS=\"\${WATCHDOG_STOP_WINDOW_SECONDS:-}\"|WATCHDOG_STOP_WINDOW_SECONDS=\"${WATCHDOG_STOP_WINDOW_SECONDS_ESC}\"|")
 fi
 
 if [[ -n "${HTTP_PROXY}" ]]; then
-  HTTP_PROXY_ESC=$(echo "${HTTP_PROXY}" | sed 's/[[\.*^$()+?{|]/\\&/g')
+  HTTP_PROXY_ESC=$(echo "${HTTP_PROXY}" | sed 's/["[[\.*^$()+?{|]/\\&/g')
   USER_DATA=$(echo "${USER_DATA}" | sed "s|HTTP_PROXY=\"\${HTTP_PROXY:-}\"|HTTP_PROXY=\"${HTTP_PROXY_ESC}\"|")
 fi
 
 if [[ -n "${HTTPS_PROXY}" ]]; then
-  HTTPS_PROXY_ESC=$(echo "${HTTPS_PROXY}" | sed 's/[[\.*^$()+?{|]/\\&/g')
+  HTTPS_PROXY_ESC=$(echo "${HTTPS_PROXY}" | sed 's/["[[\.*^$()+?{|]/\\&/g')
   USER_DATA=$(echo "${USER_DATA}" | sed "s|HTTPS_PROXY=\"\${HTTPS_PROXY:-}\"|HTTPS_PROXY=\"${HTTPS_PROXY_ESC}\"|")
 fi
 
 if [[ -n "${NO_PROXY}" ]]; then
-  NO_PROXY_ESC=$(echo "${NO_PROXY}" | sed 's/[[\.*^$()+?{|]/\\&/g')
+  NO_PROXY_ESC=$(echo "${NO_PROXY}" | sed 's/["[[\.*^$()+?{|]/\\&/g')
   USER_DATA=$(echo "${USER_DATA}" | sed "s|NO_PROXY=\"\${NO_PROXY:-.*}\"|NO_PROXY=\"${NO_PROXY_ESC}\"|")
 fi
 
 if [[ -n "${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME}" ]]; then
-  ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME_ESC=$(echo "${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME}" | sed 's/[[\.*^$()+?{|]/\\&/g')
+  ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME_ESC=$(echo "${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME}" | sed 's/["[[\.*^$()+?{|]/\\&/g')
   USER_DATA=$(echo "${USER_DATA}" | sed "s|ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME=\"\${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME:-}\"|ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME=\"${ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME_ESC}\"|")
 fi
 
