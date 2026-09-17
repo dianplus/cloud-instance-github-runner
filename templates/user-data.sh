@@ -19,7 +19,8 @@ RUNNER_REGISTRATION_TOKEN="${RUNNER_REGISTRATION_TOKEN:-}"
 GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-}"
 RUNNER_NAME="${RUNNER_NAME:-}"
 RUNNER_LABELS="${RUNNER_LABELS:-}"
-RUNNER_VERSION="${RUNNER_VERSION:-2.311.0}"  # Configurable Runner version, default to stable version
+RUNNER_VERSION="${RUNNER_VERSION:-}"  # Resolved host-side (explicit pin or latest); empty is a hard error below
+WATCHDOG_STOP_WINDOW_SECONDS="${WATCHDOG_STOP_WINDOW_SECONDS:-}"  # Optional stop-verdict window (seconds); written to /etc/environment after the EXIT trap
 
 # Proxy configuration (optional)
 HTTP_PROXY="${HTTP_PROXY:-}"
@@ -89,33 +90,43 @@ else
   echo "Proxy configuration not provided, using direct connection"
 fi
 
-# Disable the automatic security upgrade before installing anything. The Ubuntu
-# cloud image runs unattended-upgrades a few minutes after boot; upgrading libc
-# or systemd restarts systemd-resolved and systemd-networkd, and resolv.conf
-# points at the 127.0.0.53 stub, so every DNS lookup made during those seconds
-# fails with connection refused. The job sees a network error from whatever it
-# happened to be doing, which reads as flakiness rather than as a scheduled
-# task. An instance that is deleted after one job has nothing to gain from
-# being patched, and disabling the timers also keeps the upgrade from competing
-# for the dpkg lock with the package installs below.
-echo "=== Disabling unattended upgrades (ephemeral instance, patching has no value here) ==="
-systemctl disable --now unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer > /dev/null 2>&1 || true
-systemctl stop apt-daily.service apt-daily-upgrade.service > /dev/null 2>&1 || true
-
-# Update system
-echo "=== Updating system ==="
-if command -v yum &> /dev/null; then
-  # Alibaba Cloud Linux / CentOS / RHEL
-  yum update -y
-  yum install -y curl wget git
-elif command -v apt-get &> /dev/null; then
-  # Ubuntu / Debian
-  apt-get update -y
-  apt-get install -y curl wget git
-else
-  echo "Error: Unsupported package manager" >&2
-  exit 1
+# Disable the distro's automatic updates, apt-family images only
+# (pr2-intervention AC-3). Probe-verified 2026-09-17 on the stock
+# ubuntu_24_04 alibase image: unattended-upgrades is enabled and the
+# apt-daily timers inherit the image-build timestamp as their last-run
+# (Persistent=true), so every fresh instance enters a catch-up pending
+# state; on a proxied instance the install fires within minutes and
+# restarting systemd-resolved/systemd-networkd breaks the stub resolver
+# mid-work. A single-job instance gains nothing from being patched, and
+# disabling the timers also keeps the updater from racing the installs
+# below for the dpkg lock. yum-family images run nothing here and print
+# no banner (no such units, nothing pending after image build).
+if command -v apt-get &> /dev/null; then
+  echo "=== Disabling unattended upgrades (apt image; ephemeral instance, patching has no value here) ==="
+  systemctl disable --now unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer > /dev/null 2>&1 || true
+  systemctl stop apt-daily.service apt-daily-upgrade.service > /dev/null 2>&1 || true
 fi
+
+# Bootstrap tools: guarded, install-on-missing only (pr2-intervention AC-2).
+# No system-wide update on an instance deleted after one job -- a full distro
+# upgrade was pure cost, and apt-get update runs only as the immediate precondition
+# of an actual install. On images that preinstall curl/git this whole
+# section performs zero package operations.
+ensure_cmd() {
+  local cmd="$1"
+  command -v "$cmd" &> /dev/null && return 0
+  echo "=== Installing ${cmd} (missing on image) ==="
+  if command -v apt-get &> /dev/null; then
+    apt-get update -qq && apt-get install -y --no-install-recommends "$cmd"
+  elif command -v yum &> /dev/null; then
+    yum install -y "$cmd"
+  else
+    echo "Error: no supported package manager to install ${cmd}" >&2
+    return 1
+  fi
+}
+ensure_cmd curl
+ensure_cmd git
 
 # Install Aliyun CLI (required for self-destruct mechanism)
 echo "=== Installing Aliyun CLI ==="
@@ -311,6 +322,30 @@ on_user_data_exit() {
 }
 
 trap on_user_data_exit EXIT
+
+# Operator-tunable stop-verdict window (pr2-intervention AC-5): translate the
+# seconds-denominated input into the probe count and anchor-append it to
+# /etc/environment -- the channel the watchdog unit consumes and the AC-9
+# validation below reads. Positioned AFTER the EXIT trap (an append failure
+# self-destructs; no silent pre-trap leak shape) and BEFORE the AC-9
+# validation (action-written values stay validated). Append + tail -1 means
+# an explicit input OVERRIDES any same-key value pre-baked into a custom
+# image. Unset input writes nothing: the watchdog default (24) applies.
+if [[ -n "${WATCHDOG_STOP_WINDOW_SECONDS:-}" ]]; then
+  if ! [[ "${WATCHDOG_STOP_WINDOW_SECONDS}" =~ ^[0-9]+$ ]] || [[ "${WATCHDOG_STOP_WINDOW_SECONDS}" -eq 0 ]] \
+      || [[ ${#WATCHDOG_STOP_WINDOW_SECONDS} -gt 10 ]] \
+      || (( 10#${WATCHDOG_STOP_WINDOW_SECONDS} > 86400 )); then
+    # Guards, in order: digits-only, non-zero, length <= 10 (any <=10-digit
+    # decimal cannot wrap bash intmax -- the band comparison itself would
+    # otherwise wrap on huge inputs and silently pass), then the decimal-
+    # safe upper bound. A wrapped value could land on a tiny confirmation
+    # count (hair-trigger self-destruct) instead of failing loudly.
+    echo "Error: WATCHDOG_STOP_WINDOW_SECONDS must be a positive integer (seconds) no greater than 86400, got '${WATCHDOG_STOP_WINDOW_SECONDS}'" >&2
+    exit 1
+  fi
+  # ceil(seconds/5): the effective window rounds up to a whole probe count
+  echo "STOP_CONFIRMATIONS_REQUIRED=$(( (10#${WATCHDOG_STOP_WINDOW_SECONDS} + 4) / 5 ))" >> /etc/environment
+fi
 
 # Validate the operator escape-hatch override for the watchdog's stop-verdict
 # threshold (watchdog-hardening AC-9): read STOP_CONFIRMATIONS_REQUIRED from
@@ -519,6 +554,10 @@ else
 fi
 
 # Download Runner
+if [[ -z "${RUNNER_VERSION}" ]]; then
+  echo "Error: RUNNER_VERSION must be provided (host resolve step or explicit input)" >&2
+  exit 1
+fi
 echo "Using Runner version: ${RUNNER_VERSION}"
 RUNNER_URL="https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz"
 

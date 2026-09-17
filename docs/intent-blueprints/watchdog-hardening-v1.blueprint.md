@@ -1,7 +1,7 @@
 ---
-blueprint_version: v1.1
+blueprint_version: v1.2
 frozen_at: 2026-09-04
-revised_at: 2026-09-07
+revised_at: 2026-09-17
 task: runner watchdog 加固（查询失败分流 + 连续确认）与 post-job 死配置移除
 status: frozen
 ---
@@ -9,6 +9,8 @@ status: frozen
 # Intent Blueprint: watchdog 加固与 post-job 死配置移除
 
 > 修订记录 v1→v1.1（2026-09-07，经生产实证）：AC-2 / AC-9 的 `STOP_CONFIRMATIONS_REQUIRED` 默认值由 **6（6×5s=30s）改为 24（24×5s=2min）**。30s 窗口在一个未预见的场景下过紧：实例上的 runner 版本落后于 GitHub 当前版时，它在接到 job 的那一刻**自更新**并重启 actions.runner.*.service；经 NAT 出境下载并解包新 runner 常常超过 30s，watchdog 于是在 job 正在运行时判定「已停止」并自毁，job 以 shutdown signal 告终——看起来像基础设施抖动，实为 dead-man switch 误杀。实证 2026-09-07：五台实例中三台自 2.330.0 自更新至 2.337.0，其中最后开工的一台在 job 开始 20 秒后被销毁，无 ECS 系统事件记录（销毁来自实例自身）。放宽窗口的代价仍被 AutoReleaseTime（instance_ttl_minutes）兜住：最坏是多空转一会儿，不是漏一台。其余条款（三态探测分流、active 清零、unknown 不递增不清零、bootstrap 期校验位置与读取形状）不变。
+
+> 修订记录 v1.1→v1.2（2026-09-17，经用户授权；缘起 pr2-intervention v1.1 plan-reviewer 外环 + 异源对抗复核）：①**一致性修正三处**——取证武装节的竞态算术（原"30s 确认 + 10s 等待"改为"2min 确认 + 10s 等待"，且 fetch（最坏 ≈40s）现几乎必然先于自毁完成，竞态方向与原文记录相反）、AC-9 粒度注的"默认 6 文本在档"改 24、Rollout 验收期望由 ~30-40s/增量 +25s 改为 ≈130-135s/增量 ≈ +90s（照旧值验收会把健康 v1.1+ 部署判为异常）。②**20s 事故数据标注待重推导**——N=6 机制下 streak 起点到删除最短 ~35s（5×5s+10s），"job 开始 20 秒后被销毁"与"job 到达触发自更新"算术上不能同时成立，须以 runner-watchdog.log 探测时间线（confirmed-inactive n/N 带时间戳）重推因果；窗口取 24 的保守性论证（成本不对称）独立于该叙事成立。③**AC-9 通道获得 action 侧合法写入方**——pr2-intervention 新增 `watchdog_stop_window_seconds` input，经 user-data 在 trap 后/校验前以行首锚定 append 写入（满足下文范围披露的锚定契约；append + tail -1 = 显式 input 覆盖镜像预置值）。④**锚点纪律**——绝对行号锚随多次插入持续漂移（v1.1 的 +13 行已使 :153/:177/:294/:388 实际位于 :166/:190/:307/:401；v1.2 叠加 pr2-intervention 插入后进一步偏移），自 v1.2 起以可搜索文本片段为锚，绝对行号仅作历史参考。
 
 > 背景（2026-09-03 事故复核，csr 收敛记录：workspace/cross-source-review/runs/20260903-222855-watchdog-review-verify/convergence-record.json）：job 运行中实例被销毁、job 报 cancel 的事故，经同源+异源复核收敛后的候选集为：上游取消→watchdog（by-design）/ watchdog 误杀（查询失败型或瞬态）/ OOM→真实停止 / spot 回收仅当 1 小时保证不兑现。复核同时实证：`ACTIONS_RUNNER_HOOK_POST_JOB` 不被 actions/runner 读取（全库 0 命中，官方变量为 ACTIONS_RUNNER_HOOK_JOB_COMPLETED）——本仓库 post-job hook 自 initial commit 起为失效死配置；泄漏蓝图（fix-instance-leak-three-defenses）AC-3 的结构钉扎锁定了这个从未生效的"防线"。
 
@@ -32,7 +34,7 @@ status: frozen
 - **连续确认**：`STOP_CONFIRMATIONS_REQUIRED`（默认 24 × POLL_INTERVAL_SECONDS 5s = 2min）次**连续 confirmed-inactive** 才自毁；出现 active 即清零重计。默认值可经 /etc/environment 覆盖（与 BOOTSTRAP_WATCH_TIMEOUT 同机制）。
 - **Phase 1 不变**：有界等待 BOOTSTRAP_WATCH_TIMEOUT（默认 1800s）；探测三态化后 unknown 归入"继续等待"（与现行为等价，语义显式化）。
 - **移除而非激活 hook（显式决策）**：改名激活会使自毁在同步钩子内执行——阻塞 "Complete runner" 步骤、与 runner 自身关机→watchdog 形成删除竞态，且 /run 锁去重后零防御增量；watchdog（修复后）+ AutoReleaseTime 已覆盖 teardown。故删除脚本/导出/注释，并以本蓝图显式取代泄漏蓝图 AC-3 的结构钉扎（该"防线"从未存在）。
-- **取证武装（方案 D）**：自毁前把最近探测决策时间线（active/inactive/unknown 带时间戳）、`systemctl status` 尾部、`journalctl` 尾部写入 /var/log/runner-watchdog.log 并 `tee` 到 /dev/console（串口输出存续至实例删除（**假说，待 Rollout 取证演练实证**——tee /dev/console 在末秒的输出能否被 GetInstanceConsoleOutput 抓到、缓冲窗口多大，均未取一手源）；**竞态如实披露**：action 失败路径的 fetch-console-output（最坏 ≈40s 阻塞）与自毁时点（30s 确认 + 10s 等待）并发，fetch 可能输掉竞态（两落点同随实例蒸发——本地日志的实际价值如实重述：仅服务于取证演练的 SSH 直读，与**自毁失败**场景——DeleteInstance 失败时实例存活、日志可查）；转储各段带大小上限（head/tail -c，合计 ≤16KB——**设计预算**，非串口缓冲实测边界）。不引入网络外发依赖（dead-man switch 本地约束）。
+- **取证武装（方案 D）**：自毁前把最近探测决策时间线（active/inactive/unknown 带时间戳）、`systemctl status` 尾部、`journalctl` 尾部写入 /var/log/runner-watchdog.log 并 `tee` 到 /dev/console（串口输出存续至实例删除（**假说，待 Rollout 取证演练实证**——tee /dev/console 在末秒的输出能否被 GetInstanceConsoleOutput 抓到、缓冲窗口多大，均未取一手源）；**竞态如实披露（v1.2 算术修正）**：action 失败路径的 fetch-console-output（最坏 ≈40s 阻塞）与自毁时点（2min 确认 + 10s 等待，合计 ≈130s）并发，fetch 几乎必然先完成——v1.0/v1.1 记录的"fetch 可能输掉竞态"方向已反转，仅当 fetch 自身阻塞远超最坏估计时才输（两落点同随实例蒸发——本地日志的实际价值如实重述：仅服务于取证演练的 SSH 直读，与**自毁失败**场景——DeleteInstance 失败时实例存活、日志可查）；转储各段带大小上限（head/tail -c，合计 ≤16KB——**设计预算**，非串口缓冲实测边界）。不引入网络外发依赖（dead-man switch 本地约束）。
 - **驱动性最小改动**：不动 select/create 脚本、action.yml；user-data.sh 仅改五处：① watchdog heredoc；② hook 段落及其 :153/:294/:388 引用点（post-job 措辞清除）；③ self-destruct heredoc 内 :177-178 竞态注释（去 post-job 措辞——逻辑零变更）；④ **bootstrap 段新增 STOP_CONFIRMATIONS_REQUIRED 校验块**（位置钉扎：`trap on_user_data_exit EXIT` 之后、watchdog heredoc 之前）；⑤ wait-for-runner.sh 注释。
 
 ## Acceptance Criteria
@@ -72,7 +74,7 @@ status: frozen
 - AC-7 → tests/test_wait_for_runner.py::test_timeout_comment_matches_default
 - AC-9 → tests/test_user_data_structure.py::test_watchdog_invalid_confirmations_fails_loudly
 
-AC-9 粒度注（非映射行）：断言校验块位于 `trap on_user_data_exit EXIT` 之后、watchdog heredoc 之前（置于 trap 之前的参数校验区（:33-47）会使非零退出时 trap 未装、实例静默泄漏——位置钉扎防该错位）；含从 /etc/environment 读该键的钉扎形状（锚定+tail+cut+剥引号）、正整数校验形状、非零退出、**缺失键分支的守护形状**（if-grep 守护或 `|| true`——模板 `set -euo pipefail` 下未守护的无匹配 grep 会使 user-data 非零退出=『缺失键→自毁』反语义，断言缺失路径无 exit 且默认 6 文本在档）；反向断言校验不出现于 watchdog 脚本内（避免 Restart=on-failure 循环）。
+AC-9 粒度注（非映射行）：断言校验块位于 `trap on_user_data_exit EXIT` 之后、watchdog heredoc 之前（置于 trap 之前的参数校验区（:33-47）会使非零退出时 trap 未装、实例静默泄漏——位置钉扎防该错位）；含从 /etc/environment 读该键的钉扎形状（锚定+tail+cut+剥引号）、正整数校验形状、非零退出、**缺失键分支的守护形状**（if-grep 守护或 `|| true`——模板 `set -euo pipefail` 下未守护的无匹配 grep 会使 user-data 非零退出=『缺失键→自毁』反语义，断言缺失路径无 exit 且默认 24 文本在档）；反向断言校验不出现于 watchdog 脚本内（避免 Restart=on-failure 循环）。
 
 - AC-8 → 无自动化测试（文档，人工核对——Coverage Notes；映射顺序先行于 AC-9 行仅因编号列示）
 
@@ -86,7 +88,7 @@ AC-9 粒度注（非映射行）：断言校验块位于 `trap on_user_data_exit
 
 ## Rollout 验证（实施后）
 
-- 正常路径灰度：job 完成 → 实例应在 ~30-40s（6 次确认 + 10s self-destruct 固定等待）内自毁（现基线 ≈ 最多 ~15s：≤5s 轮询 + 10s 等待；增量 ≈ +25s，按秒计费下成本可忽略）。
+- 正常路径灰度（v1.2 修正）：job 完成 → 实例应在 ≈2min10s-2min15s（24 次确认 ≈120s + 轮询抖动 ≤5s + 10s self-destruct 固定等待）内自毁（1.5.1 基线 ≈ 最多 ~15s；增量 ≈ +90s，spot 按秒计费下仍可忽略）。
 - 取证演练：人为 `systemctl stop actions.runner.*` 前注入负载，核对 runner-watchdog.log 时间线含三态记录、串口可经 GetInstanceConsoleOutput 抓到转储；另演练取消路径下 fetch 与自毁的时序（fetch 是否在删除前完成——竞态披露的实证）。
 - 事故候选集取证清单（runner-watchdog.log / self-destruct.log / journal OOM / ECS 历史事件 / 调用方 4 项配置）随下次复现闭环。
 

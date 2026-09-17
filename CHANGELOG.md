@@ -9,10 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New `watchdog_stop_window_seconds` input: max seconds of continuous runner inactivity before self-destruct (any active probe resets it). Unset keeps the watchdog default (24 probes = 2min) and preserves any image-pre-baked STOP_CONFIRMATIONS_REQUIRED; setting it overrides both, replacing hand-edits to /etc/environment (blueprint pr2-intervention v1.1). New `runner_version` / `runner_version_source` outputs expose what the resolve step actually shipped
+
 ### Changed
+
+- `runner_version` now defaults to auto-latest: an empty input resolves the newest non-prerelease actions/runner release at setup time through the configured proxy (one HEAD against the releases/latest redirect, no api.github.com rate budget), with a pinned `RUNNER_FALLBACK_VERSION` constant as the loud fallback. Explicit pins are honored unchanged. Removes the stale default pin that kept every instance self-updating on its first job
+- `runner_wait_timeout` default raised from 120 to 420 — the old default failed the action's own smoke test ("cold bootstrap via the VPC proxy takes 3-6 min; the 120s default would kill healthy runs")
 
 ### Fixed
 
+- Replaced the bootstrap "Updating system" block with guarded install-on-missing for curl/git only: no more `yum update -y` full upgrade (pure cost on a single-job instance) and no unconditional `apt-get update`; the unattended-upgrades disable moved inside an apt-family guard so yum-family images no longer run a no-op with a misleading banner
+- Corrected the stale stop-window texts left by the v1.1 revision: both READMEs' troubleshooting now says 24 probes / 2min, the postmortem carries superseded-by-v1.2 notes, and the watchdog-hardening blueprint's forensics-race arithmetic, AC-9 granularity note and Rollout expectations match the shipped 24x5s default
 - Widened the watchdog stop verdict from 6 to 24 consecutive confirmed-inactive probes (30s to 2min). A runner older than the version GitHub serves self-updates when a job arrives, and the service restart could outlast the 30s window, so the watchdog destroyed the instance mid-job (blueprint watchdog-hardening v1.1)
 - Disabled unattended-upgrades and the apt-daily timers on the instance. The automatic security upgrade restarted systemd-resolved a few minutes into the instance's life, and every DNS lookup during those seconds failed with connection refused, surfacing as random network errors inside the job
 

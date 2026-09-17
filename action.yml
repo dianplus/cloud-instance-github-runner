@@ -46,13 +46,15 @@ inputs:
     required: false
     default: "self-hosted,Linux,aliyun,spot-instance"
   runner_version:
-    description: "GitHub Actions Runner version"
+    description: "GitHub Actions Runner version. Empty (recommended) auto-resolves the latest non-prerelease release at setup time (probed inside the configured proxy scope, retried direct for GitHub-hosted setups); pin an explicit version only for reproducible fleets."
     required: false
-    default: "2.330.0"
   runner_wait_timeout:
-    description: "Optional, no need to set explicitly: total seconds the action waits for the runner to come online (poll interval 10s; this is the total window, not a per-attempt timeout; instance-creation retries are governed separately). Default 120 preserves historical behavior; raise it only when cold bootstrap is slow, e.g. runner download through a proxy takes 3-6 minutes."
+    description: "Optional, no need to set explicitly: total seconds the action waits for the runner to come online (poll interval 10s; this is the total window, not a per-attempt timeout; instance-creation retries are governed separately). Default 420 matches the smoke-tested cold-bootstrap time through the VPC proxy; raise it for slower proxies."
     required: false
-    default: "120"
+    default: "420"
+  watchdog_stop_window_seconds:
+    description: "Max seconds of continuous runner inactivity before the instance self-destructs (watchdog stop-verdict window; any active probe resets it, so this is a maximum, not a forced wait). Unset (recommended) keeps the watchdog's built-in default (24 probes x 5s = 2min) and preserves any STOP_CONFIRMATIONS_REQUIRED value pre-baked into a custom image; setting it overrides both. Raise for proxies where runner self-updates or service restarts run long; the cost of a wider window is idle time after the job, bounded by instance_ttl_minutes."
+    required: false
 
   # Instance configuration
   aliyun_instance_type:
@@ -188,6 +190,12 @@ outputs:
   instance_id:
     description: "Created ECS instance ID"
     value: ${{ steps.create-instance.outputs.instance_id }}
+  runner_version:
+    description: "The runner version actually used (explicit pin, resolved latest, or fallback)"
+    value: ${{ steps.runner-version.outputs.version }}
+  runner_version_source:
+    description: "How runner_version was determined: pin | latest | fallback"
+    value: ${{ steps.runner-version.outputs.source }}
   runner_name:
     description: "Runner name"
     value: ${{ steps.runner-name.outputs.name }}
@@ -221,6 +229,68 @@ runs:
           });
           return response.data.token;
         result-encoding: string
+
+    - name: Resolve Runner Version
+      id: runner-version
+      shell: bash
+      env:
+        http_proxy: ${{ inputs.http_proxy }}
+        https_proxy: ${{ inputs.https_proxy }}
+        no_proxy: ${{ inputs.no_proxy }}
+        INPUT_RUNNER_VERSION: ${{ inputs.runner_version }}
+        RUNNER_FALLBACK_VERSION: "2.337.0"
+      run: |
+        # Inputs are read through env: -- never interpolated into the script
+        # body -- so a caller-forwarded value cannot inject shell here.
+        PINNED="${INPUT_RUNNER_VERSION}"
+        if [[ -n "${PINNED}" ]]; then
+          if ! [[ "${PINNED}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::runner_version pin '${PINNED}' is not a plain X.Y.Z version string" >&2
+            exit 1
+          fi
+          echo "version=${PINNED}" >> "$GITHUB_OUTPUT"
+          echo "source=pin" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        # Auto-latest via the release redirect: one HEAD, no auth, no JSON
+        # parsing, no api.github.com rate budget; points at the latest
+        # non-prerelease (pr2-intervention AC-4). Two-attempt cascade:
+        #   1. inside the proxy scope above -- VPC-hosted agents reach
+        #      github.com only through it;
+        #   2. DIRECT (--noproxy '*') -- GitHub-hosted setup runners cannot
+        #      reach a VPC-internal proxy at all; the instance-side proxy is
+        #      poison for host-side networking there, and they reach
+        #      github.com directly (same precedent as the aliyun-CLI
+        #      download step).
+        # Each probe is deliberately non-fatal: composite steps run bash
+        # -eo pipefail, so an unguarded failing pipeline would ABORT the
+        # step before the fallback branch -- the guard keeps degradation
+        # loud, not fatal.
+        strip_tag() { tr -d '\r' | awk 'tolower($1)=="location:"{sub(/.*\/v/,"",$2); print $2}' | head -1; }
+        LATEST=""
+        if ! LATEST="$(curl -fsSI --connect-timeout 5 --max-time 15 \
+          https://github.com/actions/runner/releases/latest | strip_tag)"; then
+          LATEST=""
+        fi
+        if [[ -z "${LATEST}" ]]; then
+          if ! LATEST="$(curl --noproxy '*' -fsSI --connect-timeout 5 --max-time 15 \
+            https://github.com/actions/runner/releases/latest | strip_tag)"; then
+            LATEST=""
+          fi
+        fi
+        # Symmetric validation with the pin path: a malformed redirect tail
+        # degrades to the fallback instead of flowing into outputs/user-data.
+        if ! [[ "${LATEST}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          LATEST=""
+        fi
+        if [[ -n "${LATEST}" ]]; then
+          echo "version=${LATEST}" >> "$GITHUB_OUTPUT"
+          echo "source=latest" >> "$GITHUB_OUTPUT"
+        else
+          echo "::warning::runner latest-version probe failed (proxy reachable? http_proxy/https_proxy inputs set?) -- using pinned fallback ${RUNNER_FALLBACK_VERSION}" >&2
+          echo "version=${RUNNER_FALLBACK_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "source=fallback" >> "$GITHUB_OUTPUT"
+        fi
 
     - name: Generate Runner Name
       id: runner-name
@@ -327,7 +397,8 @@ runs:
         GITHUB_REPOSITORY: ${{ github.repository }}
         RUNNER_NAME: ${{ steps.runner-name.outputs.name }}
         RUNNER_LABELS: ${{ inputs.runner_labels }}
-        RUNNER_VERSION: ${{ inputs.runner_version }}
+        RUNNER_VERSION: ${{ steps.runner-version.outputs.version }}
+        WATCHDOG_STOP_WINDOW_SECONDS: ${{ inputs.watchdog_stop_window_seconds }}
         HTTP_PROXY: ${{ inputs.http_proxy }}
         HTTPS_PROXY: ${{ inputs.https_proxy }}
         NO_PROXY: ${{ inputs.no_proxy }}
