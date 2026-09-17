@@ -73,9 +73,21 @@ jobs:
           http_proxy: ${{ vars.HTTP_PROXY }}
           https_proxy: ${{ vars.HTTPS_PROXY }}
           no_proxy: ${{ vars.NO_PROXY }}
-          # Cold bootstrap via the VPC proxy takes 3-6 min; the 120s default
-          # would kill healthy runs (both live smoke runs died at wait-runner).
-          runner_wait_timeout: "420"
+
+      - name: Verify auto-latest runner version resolved
+        env:
+          RESOLVED_VERSION: ${{ steps.setup-runner.outputs.runner_version }}
+          RESOLVED_SOURCE: ${{ steps.setup-runner.outputs.runner_version_source }}
+        run: |
+          if [[ -z "${RESOLVED_VERSION}" ]]; then
+            echo "ERROR: setup-runner produced no runner_version output (resolve step wiring broken)" >&2
+            exit 1
+          fi
+          if [[ "${RESOLVED_SOURCE}" != "latest" ]]; then
+            echo "ERROR: auto-latest path did not run (source=${RESOLVED_SOURCE:-missing}) -- probe degraded to fallback or pin; check proxy inputs" >&2
+            exit 1
+          fi
+          echo "Resolved runner version: ${RESOLVED_VERSION} (source: ${RESOLVED_SOURCE})"
 
       - name: Verify AutoReleaseTime is set (defense line 3)
         uses: Liar0320/aliyun-cli-action@v1.0.2

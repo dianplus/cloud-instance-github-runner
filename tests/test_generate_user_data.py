@@ -18,13 +18,15 @@ FAKE_VALUES = {
     "GITHUB_REPOSITORY": "octo-org/example-repo",
     "RUNNER_NAME": "ci-runner-amd64-spot-1787310000-1234",
     "RUNNER_VERSION": "2.330.0",
+    "WATCHDOG_STOP_WINDOW_SECONDS": "90",
     "HTTP_PROXY": "http://proxy.example.com:8080",
     "HTTPS_PROXY": "http://proxy.example.com:8080",
     "NO_PROXY": "localhost,.aliyun.com",
     "ALIYUN_ECS_SELF_DESTRUCT_ROLE_NAME": "runner-self-destruct-role",
 }
 # RUNNER_LABELS is deliberately NOT injected: optional values must leave the
-# template default line untouched.
+# template default line untouched. WATCHDOG_STOP_WINDOW_SECONDS rides the same
+# optional-injection contract (pr2-intervention AC-5).
 UNSET_OPTIONALS = ("RUNNER_LABELS",)
 
 
@@ -54,6 +56,21 @@ def test_generate_user_data_injection_contract(tmp_path):
     # no corruption) so runtime defaults still apply on the instance.
     assert 'RUNNER_LABELS="${RUNNER_LABELS:-}"' in generated, (
         "unset optional RUNNER_LABELS must retain its template default line"
+    )
+
+    # pr2-intervention AC-4/AC-5: the RUNNER_VERSION sed pattern tracks the
+    # template's EMPTY default line (the stale 2.311.0 pin is gone), and the
+    # rendered output must carry the loud empty-version guard the instance
+    # would execute (defense in depth behind the host-side resolve step).
+    assert 'RUNNER_VERSION="${RUNNER_VERSION:-}"' not in generated, (
+        "pi AC-4: the generator must inject RUNNER_VERSION into the empty-default "
+        "line (sed/template lockstep; a miss means the instance boots versionless)"
+    )
+    assert "RUNNER_VERSION must be provided" in generated, (
+        "pi AC-4: the rendered script must contain the loud empty-RUNNER_VERSION guard"
+    )
+    assert 'WATCHDOG_STOP_WINDOW_SECONDS="90"' in generated, (
+        "pi AC-5: the window override must be injected via the same contract"
     )
 
     # The rendered script must stay syntactically valid bash.
