@@ -308,7 +308,7 @@ def test_runner_version_resolve_step_wiring():
 
     gen_idx = _line_index_of("- name: Generate User Data")
     assert gen_idx is not None
-    gen_block = "\n".join(ACTION_YML_LINES[gen_idx : gen_idx + 15])
+    gen_block = "\n".join(ACTION_YML_LINES[gen_idx : gen_idx + 25])
     assert "steps.runner-version.outputs.version" in gen_block, (
         "pi AC-4: the user-data step must consume steps.runner-version.outputs.version"
     )
@@ -426,3 +426,29 @@ def test_user_data_b64_masked_and_no_dead_debug():
     assert "export DEBUG=true" not in ACTION_YML_TEXT, (
         "pr3 companion: the dead `export DEBUG=true` must not reappear (zero consumers)"
     )
+
+
+def test_spot_runner_name_wiring_pinned():
+    # PR #4 companion (psv4 C5/C6): the carried name rides SPOT_RUNNER_NAME in
+    # BOTH consumer steps, and no step env block re-declares the injected
+    # default name RUNNER_NAME (an assignment there is ignored on
+    # self-hosted hosts -- the very defect this PR fixes).
+    gen_idx = _line_index_of("- name: Generate User Data")
+    wait_idx = _line_index_of("- name: Wait for Runner Online")
+    assert gen_idx is not None and wait_idx is not None
+    gen_block = "\n".join(ACTION_YML_LINES[gen_idx : gen_idx + 25])
+    wait_block = "\n".join(ACTION_YML_LINES[wait_idx : wait_idx + 12])
+    assert "SPOT_RUNNER_NAME: ${{ steps.runner-name.outputs.name }}" in gen_block, (
+        "PR4 companion: the user-data step env must carry SPOT_RUNNER_NAME"
+    )
+    assert "SPOT_RUNNER_NAME: ${{ steps.runner-name.outputs.name }}" in wait_block, (
+        "PR4 companion: the wait step env must carry SPOT_RUNNER_NAME"
+    )
+    import re as _re
+
+    for block, label in ((gen_block, "user-data step"), (wait_block, "wait step")):
+        assert not _re.search(r"(?m)^\s*RUNNER_NAME\s*:", block), (
+            f"PR4 companion: the {label} env must NOT declare RUNNER_NAME -- the "
+            "runner-injected default ignores the assignment (variables reference: "
+            "'the assignment is ignored')"
+        )

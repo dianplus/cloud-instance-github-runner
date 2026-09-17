@@ -27,7 +27,7 @@ if [[ -z "${GITHUB_REPOSITORY}" ]]; then
 fi
 
 if [[ -z "${RUNNER_NAME}" ]]; then
-  echo "Error: RUNNER_NAME is required" >&2
+  echo "Error: SPOT_RUNNER_NAME is required" >&2
   exit 1
 fi
 
