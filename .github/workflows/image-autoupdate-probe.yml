@@ -40,7 +40,6 @@ jobs:
         env:
           VSWITCH_ID: ${{ vars.ALIYUN_VSWITCH_ID_B }}
           SECURITY_GROUP_ID: ${{ vars.ALIYUN_SECURITY_GROUP_ID }}
-          WAIT_SECONDS: ${{ inputs.wait_seconds }}
         run: |
           set -euo pipefail
           cat > /tmp/probe.sh <<'PROBE'
@@ -107,7 +106,7 @@ jobs:
           echo "launched: ubuntu=$UBUNTU_ID alinux=$ALINUX_ID"
 
       - name: Wait for probe window
-        run: sleep "${{ inputs.wait_seconds }}"
+        run: sleep 480
 
       - name: Read serial console output
         if: always()
