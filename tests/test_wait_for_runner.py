@@ -149,3 +149,27 @@ def test_timeout_comment_matches_default():
         f"wh AC-7: the TIMEOUT comment must match the 120s default (2 minutes); "
         f"stale comment present: {m.group(2)!r}"
     )
+
+
+def test_injected_runner_name_does_not_win_wait_side(tmp_path):
+    """Wait-side precedence mirror (PR #4 companion).
+
+    The API list contains ONLY a runner named after the injected host-agent
+    RUNNER_NAME, online. If wait-for-runner.sh wrongly polled by RUNNER_NAME
+    it would report false success immediately; polling by SPOT_RUNNER_NAME
+    (the never-appearing spot name) must end in the bounded timeout instead.
+    """
+    stub_bin = _write_stub(
+        tmp_path,
+        body=('{"runners": [{"name": "host-agent-do-not-use", "id": 9, "status": "online"}]}'),
+    )
+    rc, out, gh_output = _run_wait(
+        tmp_path, stub_bin, env_overrides={"RUNNER_NAME": "host-agent-do-not-use"}
+    )
+    assert rc == 1, (
+        "an ambient RUNNER_NAME (host agent, online in the API list) must never "
+        f"satisfy the wait step; got rc={rc}, output:\n{out}"
+    )
+    assert "runner_online=false" in gh_output, (
+        f"GITHUB_OUTPUT must carry runner_online=false; got:\n{gh_output}"
+    )
