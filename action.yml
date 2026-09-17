@@ -413,6 +413,11 @@ runs:
       run: |
         USER_DATA=$(bash ${{ github.action_path }}/scripts/generate-user-data.sh)
         USER_DATA_B64=$(echo -n "${USER_DATA}" | base64 -w 0 2>/dev/null || echo -n "${USER_DATA}" | base64 | tr -d '\n')
+        # Mask the base64 derived form too: the next step's env banner prints
+        # USER_DATA_B64 verbatim, and the raw-token setSecret only masks the
+        # exact raw string -- a decodable copy of the token inside the b64
+        # would otherwise reach the job log in the clear.
+        echo "::add-mask::${USER_DATA_B64}"
         echo "user_data_b64=${USER_DATA_B64}" >> $GITHUB_OUTPUT
 
     - name: Create Spot Instance
@@ -467,7 +472,6 @@ runs:
       run: |
         python3 ${{ github.action_path }}/scripts/write_user_data.py /tmp/user-data.sh
         export USER_DATA_FILE=/tmp/user-data.sh
-        export DEBUG=true
         python3 ${{ github.action_path }}/scripts/create_spot_instance.py > /tmp/instance-id.txt 2> /tmp/aliyun-error.log || {
           EXIT_CODE=$?
           echo "Error: Failed to create instance (exit code: ${EXIT_CODE})"
